@@ -1,4 +1,4 @@
 requests
 feedparser
 youtube-transcript-api
-google-generativeai
+google-genai
