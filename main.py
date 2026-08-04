@@ -96,7 +96,7 @@ def generate_combined_analysis(target_name, videos_data):
         return "⚠️ 未設定 GEMINI_API_KEY，無法進行 AI 整合分析。"
 
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash')
 
     # 組合多支影片的文本 context
     context_text = ""
