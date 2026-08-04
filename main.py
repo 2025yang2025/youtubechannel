@@ -11,181 +11,174 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# ================= 2. 頻道 / 播放清單設定 =================
-# 現在支援：
-# 1. 頻道網址：https://www.youtube.com/@LaoGao
-# 2. 播放清單網址：https://www.youtube.com/playlist?list=PL6XmsUWSei7yjLRhblIP1QxCCrwQlsdI4
-# 3. 直接填 RSS 網址 (欄位設為 rss)
-CHANNELS = [
+# 欲整合分析的目標（頻道網址、播放清單網址皆可）
+TARGETS = [
     {
         "name": "請支援輸贏",
-        "url": "https://www.youtube.com/playlist?list=PL6XmsUWSei7yjLRhblIP1QxCCrwQlsdI4"
+        "url": "https://www.youtube.com/playlist?list=PL6XmsUWSei7yjLRhblIP1QxCCrwQlsdI4",
+        "fetch_count": 3  # 設定每次整合分析最近幾支影片
+    },
+    {
+        "name": "總編當莊",
+        "url": "https://www.youtube.com/@berich888/featured",
+        "fetch_count": 3  # 設定每次整合分析最近幾支影片
+    },
+    {
+        "name": "陳威良 股市全威 (考股學家)",
+        "url": "https://www.youtube.com/@ccstock888",
+        "fetch_count": 3  # 設定每次整合分析最近幾支影片
+    },
+     {
+        "name": "《產經希引力》從趨勢找好產業",
+        "url": "https://www.youtube.com/playlist?list=PLj52IfHdKHFdwnebZKoWGaBVcCRpWV7Ju",
+        "fetch_count": 3  # 設定每次整合分析最近幾支影片
     },
 ]
 
-DB_FILE = "processed_videos.json"
-
-# ================= 3. 核心與輔助功能函式 =================
-def load_processed_ids():
-    """載入已發送過的影片 ID 記錄"""
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                return set(json.load(f))
-        except Exception:
-            return set()
-    return set()
-
-def save_processed_ids(processed_ids):
-    """保存已發送過的影片 ID 記錄"""
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(processed_ids), f, ensure_ascii=False, indent=2)
-
-def get_rss_by_youtube_url(url):
-    """自動判斷是頻道還是播放清單，並轉為對應的 RSS Feed 網址"""
+# ================= 2. 輔助函式 =================
+def get_rss_url(url):
+    """將頻道或播放清單網址轉為 RSS 網址"""
     if not url:
         return None
     if "channel_id=" in url or "playlist_id=" in url:
-        return url  # 本身已經是 RSS 網址
-
-    # 1. 處理播放清單 (Playlist) 網址
+        return url
     if "list=" in url:
         match = re.search(r'list=([a-zA-Z0-9_-]+)', url)
         if match:
-            playlist_id = match.group(1)
-            return f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
-
-    # 2. 處理頻道主頁網址 (Channel / Handle)
+            return f"https://www.youtube.com/feeds/videos.xml?playlist_id={match.group(1)}"
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         res = requests.get(url, headers=headers, timeout=10)
         match = re.search(r'channel_id=([a-zA-Z0-9_-]{24})', res.text)
         if match:
-            channel_id = match.group(1)
-            return f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+            return f"https://www.youtube.com/feeds/videos.xml?channel_id={match.group(1)}"
     except Exception as e:
-        print(f"⚠️ 解析頻道網址失敗 [{url}]: {e}")
+        print(f"⚠️ 解析網址失敗 [{url}]: {e}")
     return None
 
-def get_latest_video(rss_url):
-    """從 RSS 獲取最新一支影片資訊"""
+def fetch_videos_info(rss_url, count=3):
+    """讀取最新的 N 支影片資訊與逐字稿"""
     feed = feedparser.parse(rss_url)
-    if feed.entries:
-        latest = feed.entries[0]
-        # 處理播放清單與一般影片 RSS 解析差異
-        if hasattr(latest, 'yt_videoid'):
-            video_id = latest.yt_videoid
+    videos_data = []
+    
+    for entry in feed.entries[:count]:
+        if hasattr(entry, 'yt_videoid'):
+            video_id = entry.yt_videoid
         else:
-            match = re.search(r'v=([a-zA-Z0-9_-]+)', latest.link)
-            video_id = match.group(1) if match else latest.link.split("/")[-1]
+            match = re.search(r'v=([a-zA-Z0-9_-]+)', entry.link)
+            video_id = match.group(1) if match else entry.link.split("/")[-1]
+            
+        title = entry.title
+        link = f"https://www.youtube.com/watch?v={video_id}"
+        
+        # 抓取逐字稿
+        transcript_text = ""
+        try:
+            transcript_list = YouTubeTranscriptApi.get_transcript(
+                video_id, languages=['zh-TW', 'zh-Hant', 'zh', 'en']
+            )
+            transcript_text = " ".join([t['text'] for t in transcript_list])
+        except Exception:
+            transcript_text = "（無法取得字幕）"
 
-        return {
-            "title": latest.title,
-            "link": f"https://www.youtube.com/watch?v={video_id}",
-            "id": video_id
-        }
-    return None
+        videos_data.append({
+            "id": video_id,
+            "title": title,
+            "link": link,
+            "transcript": transcript_text
+        })
+        
+    return videos_data
 
-def fetch_transcript(video_id):
-    """取得影片字幕，優先抓取繁中/簡中/英文"""
-    try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(
-            video_id, 
-            languages=['zh-TW', 'zh-Hant', 'zh', 'en']
-        )
-        full_text = " ".join([t['text'] for t in transcript_list])
-        return full_text
-    except Exception as e:
-        print(f"ℹ️ 無法獲取字幕 (Video ID: {video_id}): {e}")
-        return None
-
-def generate_summary(title, transcript_text):
-    """呼叫 Gemini AI 進行重點摘要"""
+def generate_combined_analysis(target_name, videos_data):
+    """將多支影片資訊整合後，呼叫 Gemini 進行綜合分析報告」"""
     if not GEMINI_API_KEY:
-        return "⚠️ 未設定 GEMINI_API_KEY，跳過 AI 摘要。"
+        return "⚠️ 未設定 GEMINI_API_KEY，無法進行 AI 整合分析。"
 
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel('gemini-1.5-flash')
 
-    prompt = f"""
-你是一個專業的內容摘要助手。請針對以下 YouTube 影片的標題與逐字稿，用繁體中文整理出 3 至 5 個核心重點摘要與總結。
+    # 組合多支影片的文本 context
+    context_text = ""
+    for idx, v in enumerate(videos_data, 1):
+        context_text += f"\n--- 影片 {idx} ---\n"
+        context_text += f"標題：{v['title']}\n"
+        context_text += f"連結：{v['link']}\n"
+        context_text += f"逐字稿內容摘要：{v['transcript'][:2000]}\n"
 
-影片標題：{title}
-影片逐字稿內容：
-{transcript_text[:5000]}
+    prompt = f"""
+你是一名專業的數據與內容分析師。請針對【{target_name}】最近發布的 {len(videos_data)} 支 YouTube 影片內容進行「跨影片綜合整合分析報告」。
+
+分析素材如下：
+{context_text}
+
+請以繁體中文回覆，報告結構需包含：
+1. 🎯 **核心主題與總體脈絡**：這幾支影片共同探討的主要議題或核心邏輯是什麼？
+2. 💡 **關鍵整合與分析結果**：
+   - 綜合多支影片提出的重點觀察與數據分析。
+   - 影片之間是否有前後呼應、遞進關係或立場對比？
+3. 📌 **總結與可行性建議**：給觀看者的核心總結建議。
+
+請保持內容結構清晰、重點突出，適合在手機通訊軟體上閱讀。
 """
+
     try:
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"⚠️ AI 摘要生成失敗：{e}"
+        return f"⚠️ 綜合分析生成失敗：{e}"
 
-def send_telegram(title, link, summary):
-    """發送訊息至 Telegram"""
-    message = f"🎬 *{title}*\n🔗 {link}\n\n🤖 *AI 內容重點摘要：*\n{summary}"
+def send_telegram(target_name, videos_data, analysis_result):
+    """將整合分析報告發送至 Telegram"""
+    # 建立影片清單區塊
+    video_links_str = "\n".join([f"• [{v['title']}]({v['link']})" for v in videos_data])
     
+    message = f"📊 *【{target_name}】跨影片綜合整合分析報告*\n\n"
+    message += f"🎬 *分析影片來源 ({len(videos_data)} 支)：*\n{video_links_str}\n\n"
+    message += f"-----------------------------------\n\n"
+    message += analysis_result
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message,
         "parse_mode": "Markdown",
-        "disable_web_page_preview": False
+        "disable_web_page_preview": True
     }
     
-    res = requests.post(url, json=payload, timeout=10)
+    res = requests.post(url, json=payload, timeout=20)
     if res.status_code != 200:
-        print(f"❌ Telegram 發送失敗: {res.text}")
+        # 如果因為 Markdown 格式解析失敗，退回純文字發送
+        payload["parse_mode"] = ""
+        requests.post(url, json=payload, timeout=20)
 
-# ================= 4. 主流程 =================
+# ================= 3. 主流程 =================
 def main():
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         raise ValueError("請先至 GitHub Secrets 設定 TELEGRAM_BOT_TOKEN 與 TELEGRAM_CHAT_ID！")
 
-    processed_ids = load_processed_ids()
-    has_new_video = False
-
-    for ch in CHANNELS:
-        ch_name = ch.get("name", "未命名頻道/播放清單")
-        rss_url = ch.get("rss") or get_rss_by_youtube_url(ch.get("url"))
+    for target in TARGETS:
+        target_name = target.get("name", "頻道/播放清單")
+        rss_url = get_rss_url(target.get("url"))
 
         if not rss_url:
-            print(f"❌ 無法獲取 [{ch_name}] 的 RSS Feed，跳過處理。")
+            print(f"❌ 無法讀取 [{target_name}] 的 RSS Feed。")
             continue
 
-        video = get_latest_video(rss_url)
-        if not video:
-            print(f"ℹ️ [{ch_name}] 暫無最新影片。")
+        fetch_count = target.get("fetch_count", 3)
+        print(f"🚀 正在讀取 [{target_name}] 最近 {fetch_count} 支影片資訊與逐字稿...")
+        
+        videos_data = fetch_videos_info(rss_url, count=fetch_count)
+        if not videos_data:
+            print(f"ℹ️ [{target_name}] 未抓取到任何影片。")
             continue
 
-        video_id = video["id"]
+        print(f"🤖 正在呼叫 AI 進行跨影片整合分析...")
+        analysis_result = generate_combined_analysis(target_name, videos_data)
 
-        # 檢查是否已發送過
-        if video_id in processed_ids:
-            print(f"▶️ [{ch_name}] 的影片 [{video['title']}] 已發送過，跳過。")
-            continue
-
-        print(f"🚀 發現 [{ch_name}] 的新影片：{video['title']}，開始處理...")
-
-        # 抓取字幕並摘要
-        transcript = fetch_transcript(video_id)
-        if transcript:
-            summary = generate_summary(video["title"], transcript)
-        else:
-            summary = "（此影片暫無官方/自動字幕可供 AI 摘要分析）"
-
-        # 發送 Telegram 訊息
-        send_telegram(video["title"], video["link"], summary)
-
-        # 記錄 ID
-        processed_ids.add(video_id)
-        has_new_video = True
-
-    # 儲存紀錄檔
-    if has_new_video:
-        save_processed_ids(processed_ids)
-        print("✅ 已更新 processed_videos.json 歷史發送紀錄。")
-    else:
-        print("✅ 檢查完畢，無新影片需推送。")
+        print(f"📤 正在發送整合分析報告至 Telegram...")
+        send_telegram(target_name, videos_data, analysis_result)
+        print("✅ 完成發送！")
 
 if __name__ == "__main__":
     main()
