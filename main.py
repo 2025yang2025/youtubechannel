@@ -4,7 +4,7 @@ import requests
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 from google import genai
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 # ================= 1. 環境變數讀取 =================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -16,22 +16,22 @@ TARGETS = [
     {
         "name": "請支援輸贏",
         "url": "https://www.youtube.com/playlist?list=PL6XmsUWSei7yjLRhblIP1QxCCrwQlsdI4",
-        "fetch_count": 1
+        "fetch_count": 3
     },
     {
         "name": "總編當莊",
         "url": "https://www.youtube.com/channel/UCg4sI1KkI3W7N5K6dOAnxKw/videos",
-        "fetch_count": 1
+        "fetch_count": 3
     },
     {
         "name": "陳威良 股市全威 (考股學家)",
         "url": "https://www.youtube.com/channel/UCccS6U6vRkB3UjJ9oJ54E3w/videos",
-        "fetch_count": 1
+        "fetch_count": 3
     },
     {
         "name": "《產經希引力》從趨勢找好產業",
         "url": "https://www.youtube.com/playlist?list=PLj52IfHdKHFdwnebZKoWGaBVcCRpWV7Ju",
-        "fetch_count": 1
+        "fetch_count": 3
     },
 ]
 
@@ -92,15 +92,15 @@ def fetch_videos_info(target):
 
     return videos_data
 
-# 加入指數退避重試，應對 429 限制
+# 使用 gemini-2.0-flash 並加入指數退避重試
 @retry(
-    stop=stop_after_attempt(4),
-    wait=wait_exponential(multiplier=5, min=15, max=60),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=5, min=20, max=60),
     reraise=True
 )
 def call_gemini_api(client, prompt):
     return client.models.generate_content(
-        model='gemini-1.5-flash',
+        model='gemini-2.0-flash',
         contents=prompt,
     )
 
@@ -116,7 +116,8 @@ def generate_combined_analysis(target_name, videos_data):
         context_text += f"\n--- 影片 {idx} ---\n"
         context_text += f"標題：{v['title']}\n"
         context_text += f"連結：{v['link']}\n"
-        context_text += f"逐字稿內容：{v['transcript'][:2000]}\n"
+        # 截取逐字稿精華長度至 1500 字，防範過多 Tokens
+        context_text += f"逐字稿內容：{v['transcript'][:1500]}\n"
 
     prompt = f"""
 你是一名專業的財經數據與產業內容分析師。請針對【{target_name}】最近發布的 {len(videos_data)} 支 YouTube 影片內容進行「跨影片綜合整合分析報告」。
@@ -183,10 +184,10 @@ def main():
         send_telegram(target_name, videos_data, analysis_result)
         print(f"✅ [{target_name}] 分析報告發送完成！\n")
 
-        # 每個目標間隔 15 秒，避免連續請求觸發 API Rate Limit
+        # 每個目標間隔 20 秒，避免連續請求觸發 API Rate Limit
         if idx < len(TARGETS) - 1:
-            print("⏳ 等待 15 秒後繼續下一個頻道，避免觸發 API 上限...")
-            time.sleep(15)
+            print("⏳ 等待 20 秒後繼續下一個頻道，避免觸發 API 上限...")
+            time.sleep(20)
 
 if __name__ == "__main__":
     main()
