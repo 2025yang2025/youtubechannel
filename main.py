@@ -11,18 +11,16 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# ================= 2. 頻道設定 (可自由替換或新增頻道網址) =================
-# 你可以直接填寫頻道網址 (url) 或標準 RSS 網址 (rss)
+# ================= 2. 頻道 / 播放清單設定 =================
+# 現在支援：
+# 1. 頻道網址：https://www.youtube.com/@LaoGao
+# 2. 播放清單網址：https://www.youtube.com/playlist?list=PL6XmsUWSei7yjLRhblIP1QxCCrwQlsdI4
+# 3. 直接填 RSS 網址 (欄位設為 rss)
 CHANNELS = [
-     {
+    {
         "name": "請支援輸贏",
         "url": "https://www.youtube.com/playlist?list=PL6XmsUWSei7yjLRhblIP1QxCCrwQlsdI4"
     },
-    # 範例：若想新增頻道，只需像下面這樣繼續增加：
-    # {
-    #     "name": "頻道名稱",
-    #     "url": "https://www.youtube.com/@頻道Handle"
-    # },
 ]
 
 DB_FILE = "processed_videos.json"
@@ -44,12 +42,20 @@ def save_processed_ids(processed_ids):
         json.dump(list(processed_ids), f, ensure_ascii=False, indent=2)
 
 def get_rss_by_youtube_url(url):
-    """將一般 YouTube 頻道網址自動轉為 RSS Feed 網址"""
+    """自動判斷是頻道還是播放清單，並轉為對應的 RSS Feed 網址"""
     if not url:
         return None
-    if "channel_id=" in url:
+    if "channel_id=" in url or "playlist_id=" in url:
         return url  # 本身已經是 RSS 網址
 
+    # 1. 處理播放清單 (Playlist) 網址
+    if "list=" in url:
+        match = re.search(r'list=([a-zA-Z0-9_-]+)', url)
+        if match:
+            playlist_id = match.group(1)
+            return f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
+
+    # 2. 處理頻道主頁網址 (Channel / Handle)
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         res = requests.get(url, headers=headers, timeout=10)
@@ -66,10 +72,16 @@ def get_latest_video(rss_url):
     feed = feedparser.parse(rss_url)
     if feed.entries:
         latest = feed.entries[0]
-        video_id = latest.yt_videoid if hasattr(latest, 'yt_videoid') else latest.link.split("v=")[-1]
+        # 處理播放清單與一般影片 RSS 解析差異
+        if hasattr(latest, 'yt_videoid'):
+            video_id = latest.yt_videoid
+        else:
+            match = re.search(r'v=([a-zA-Z0-9_-]+)', latest.link)
+            video_id = match.group(1) if match else latest.link.split("/")[-1]
+
         return {
             "title": latest.title,
-            "link": latest.link,
+            "link": f"https://www.youtube.com/watch?v={video_id}",
             "id": video_id
         }
     return None
@@ -133,7 +145,7 @@ def main():
     has_new_video = False
 
     for ch in CHANNELS:
-        ch_name = ch.get("name", "未命名頻道")
+        ch_name = ch.get("name", "未命名頻道/播放清單")
         rss_url = ch.get("rss") or get_rss_by_youtube_url(ch.get("url"))
 
         if not rss_url:
@@ -149,7 +161,7 @@ def main():
 
         # 檢查是否已發送過
         if video_id in processed_ids:
-            print(f"▶️ 頻道 [{ch_name}] 的影片 [{video['title']}] 已發送過，跳過。")
+            print(f"▶️ [{ch_name}] 的影片 [{video['title']}] 已發送過，跳過。")
             continue
 
         print(f"🚀 發現 [{ch_name}] 的新影片：{video['title']}，開始處理...")
