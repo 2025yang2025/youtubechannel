@@ -116,7 +116,7 @@ def generate_combined_analysis(target_name, videos_data):
         context_text += f"\n--- 影片 {idx} ---\n"
         context_text += f"標題：{v['title']}\n"
         context_text += f"連結：{v['link']}\n"
-        context_text += f"逐字稿內容：{v['transcript'][:3000]}\n"
+        context_text += f"逐字稿內容：{v['transcript'][:2000]}\n"
 
     prompt = f"""
 你是一名專業的財經數據與產業內容分析師。請針對【{target_name}】最近發布的 {len(videos_data)} 支 YouTube 影片內容進行「跨影片綜合整合分析報告」。
