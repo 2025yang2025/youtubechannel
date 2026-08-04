@@ -1,4 +1,4 @@
 requests
 youtube-transcript-api
 google-genai
-scrapetube
+yt-dlp
