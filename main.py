@@ -1,8 +1,10 @@
 import os
+import time
 import requests
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 from google import genai
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 # ================= 1. 環境變數讀取 =================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -90,8 +92,20 @@ def fetch_videos_info(target):
 
     return videos_data
 
+# 加入指數退避重試，應對 429 限制
+@retry(
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=5, min=15, max=60),
+    reraise=True
+)
+def call_gemini_api(client, prompt):
+    return client.models.generate_content(
+        model='gemini-2.0-flash',
+        contents=prompt,
+    )
+
 def generate_combined_analysis(target_name, videos_data):
-    """呼叫新版 Google GenAI SDK 進行綜合分析報告"""
+    """呼叫 Google GenAI SDK 進行綜合分析報告"""
     if not GEMINI_API_KEY:
         return "⚠️ 未設定 GEMINI_API_KEY，無法進行 AI 整合分析。"
 
@@ -121,13 +135,10 @@ def generate_combined_analysis(target_name, videos_data):
 """
 
     try:
-        response = client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=prompt,
-        )
+        response = call_gemini_api(client, prompt)
         return response.text
     except Exception as e:
-        return f"⚠️ 綜合分析生成失敗：{e}"
+        return f"⚠️ 綜合分析生成失敗 (多次重試後依舊超額或失敗)：{e}"
 
 def send_telegram(target_name, videos_data, analysis_result):
     """將整合分析報告發送至 Telegram"""
@@ -148,6 +159,7 @@ def send_telegram(target_name, videos_data, analysis_result):
 
     res = requests.post(url, json=payload, timeout=20)
     if res.status_code != 200:
+        # Markdown 格式發送失敗時備援改用純文字
         payload["parse_mode"] = ""
         requests.post(url, json=payload, timeout=20)
 
@@ -156,7 +168,7 @@ def main():
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         raise ValueError("請先至 GitHub Secrets 設定 TELEGRAM_BOT_TOKEN 與 TELEGRAM_CHAT_ID！")
 
-    for target in TARGETS:
+    for idx, target in enumerate(TARGETS):
         target_name = target.get("name", "頻道/播放清單")
         
         videos_data = fetch_videos_info(target)
@@ -170,6 +182,11 @@ def main():
         print(f"📤 正在發送整合分析報告至 Telegram...")
         send_telegram(target_name, videos_data, analysis_result)
         print(f"✅ [{target_name}] 分析報告發送完成！\n")
+
+        # 每個目標間隔 15 秒，避免連續請求觸發 API Rate Limit
+        if idx < len(TARGETS) - 1:
+            print("⏳ 等待 15 秒後繼續下一個頻道，避免觸發 API 上限...")
+            time.sleep(15)
 
 if __name__ == "__main__":
     main()
