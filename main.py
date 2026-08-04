@@ -16,22 +16,22 @@ TARGETS = [
     {
         "name": "請支援輸贏",
         "url": "https://www.youtube.com/playlist?list=PL6XmsUWSei7yjLRhblIP1QxCCrwQlsdI4",
-        "fetch_count": 3
+        "fetch_count": 1
     },
     {
         "name": "總編當莊",
         "url": "https://www.youtube.com/channel/UCg4sI1KkI3W7N5K6dOAnxKw/videos",
-        "fetch_count": 3
+        "fetch_count": 1
     },
     {
         "name": "陳威良 股市全威 (考股學家)",
         "url": "https://www.youtube.com/channel/UCccS6U6vRkB3UjJ9oJ54E3w/videos",
-        "fetch_count": 3
+        "fetch_count": 1
     },
     {
         "name": "《產經希引力》從趨勢找好產業",
         "url": "https://www.youtube.com/playlist?list=PLj52IfHdKHFdwnebZKoWGaBVcCRpWV7Ju",
-        "fetch_count": 3
+        "fetch_count": 1
     },
 ]
 
