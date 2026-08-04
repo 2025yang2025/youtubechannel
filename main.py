@@ -4,14 +4,14 @@ import json
 import requests
 import feedparser
 from youtube_transcript_api import YouTubeTranscriptApi
-import google.generativeai as genai
+from google import genai
 
 # ================= 1. 環境變數讀取 =================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# ================= 2. 欲整合分析的目標清單 (已轉換為標準 RSS 網址) =================
+# ================= 2. 欲整合分析的目標清單 =================
 TARGETS = [
     {
         "name": "請支援輸贏",
@@ -36,11 +36,33 @@ TARGETS = [
 ]
 
 # ================= 3. 核心與輔助函式 =================
+def fetch_rss_content(rss_url):
+    """帶上偽裝 Headers 發送 Request，避免 GitHub Actions IP 被 YouTube RSS 擋掉"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
+    try:
+        response = requests.get(rss_url, headers=headers, timeout=15)
+        if response.status_code == 200:
+            return response.content
+        else:
+            print(f"⚠️ 讀取 RSS 失敗，HTTP 狀態碼: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"⚠️ 發送 RSS 請求時發生例外: {e}")
+        return None
+
 def fetch_videos_info(rss_url, count=3):
     """讀取最新的 N 支影片資訊與逐字稿"""
-    feed = feedparser.parse(rss_url)
+    xml_content = fetch_rss_content(rss_url)
+    if not xml_content:
+        return []
+
+    feed = feedparser.parse(xml_content)
     if not feed.entries:
-        print(f"⚠️ RSS 解析結果為空，請確認網址: {rss_url}")
+        print(f"⚠️ RSS 解析結果為空，請確認內容或網址: {rss_url}")
         return []
 
     videos_data = []
@@ -60,16 +82,14 @@ def fetch_videos_info(rss_url, count=3):
         transcript_text = ""
         try:
             transcript_list = yt_api.list_transcripts(video_id)
-            # 優先尋找中文或英文字幕
             try:
                 transcript = transcript_list.find_transcript(['zh-TW', 'zh-Hant', 'zh', 'en'])
             except Exception:
-                # 若無上述語言，嘗試找自動生成的字幕
                 transcript = transcript_list.find_generated_transcript(['zh-TW', 'zh-Hant', 'zh', 'en'])
             
             fetched_data = transcript.fetch()
             transcript_text = " ".join([t['text'] for t in fetched_data])
-        except Exception as e:
+        except Exception:
             transcript_text = "（無法取得字幕或該影片無提供字幕）"
 
         videos_data.append({
@@ -82,14 +102,13 @@ def fetch_videos_info(rss_url, count=3):
     return videos_data
 
 def generate_combined_analysis(target_name, videos_data):
-    """將多支影片資訊整合後，呼叫 Gemini 進行綜合分析報告"""
+    """呼叫新版 Google GenAI SDK 進行綜合分析報告"""
     if not GEMINI_API_KEY:
         return "⚠️ 未設定 GEMINI_API_KEY，無法進行 AI 整合分析。"
 
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    # 使用新版 SDK 初始化 Client
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
-    # 組合多支影片的文本 context
     context_text = ""
     for idx, v in enumerate(videos_data, 1):
         context_text += f"\n--- 影片 {idx} ---\n"
@@ -114,7 +133,10 @@ def generate_combined_analysis(target_name, videos_data):
 """
 
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt,
+        )
         return response.text
     except Exception as e:
         return f"⚠️ 綜合分析生成失敗：{e}"
@@ -138,7 +160,6 @@ def send_telegram(target_name, videos_data, analysis_result):
 
     res = requests.post(url, json=payload, timeout=20)
     if res.status_code != 200:
-        # 如果因為 Markdown 特殊符號解析失敗，退回純文字發送
         payload["parse_mode"] = ""
         requests.post(url, json=payload, timeout=20)
 
