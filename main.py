@@ -1,6 +1,5 @@
 import os
 import re
-import json
 import requests
 import feedparser
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -11,7 +10,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# ================= 2. 欲整合分析的目標清單 =================
+# ================= 2. 欲整合分析的目標清單 (已更新正確 RSS ID) =================
 TARGETS = [
     {
         "name": "請支援輸贏",
@@ -20,12 +19,12 @@ TARGETS = [
     },
     {
         "name": "總編當莊",
-        "rss": "https://www.youtube.com/feeds/videos.xml?channel_id=UC6iA41e_5p1WJ94o9S8Jk-A",
+        "rss": "https://www.youtube.com/feeds/videos.xml?channel_id=UCg4sI1KkI3W7N5K6dOAnxKw",
         "fetch_count": 3
     },
     {
         "name": "陳威良 股市全威 (考股學家)",
-        "rss": "https://www.youtube.com/feeds/videos.xml?channel_id=UC438s3u-4f3oD54r_W2dThA",
+        "rss": "https://www.youtube.com/feeds/videos.xml?channel_id=UCccS6U6vRkB3UjJ9oJ54E3w",
         "fetch_count": 3
     },
     {
@@ -36,33 +35,29 @@ TARGETS = [
 ]
 
 # ================= 3. 核心與輔助函式 =================
-def fetch_rss_content(rss_url):
-    """帶上偽裝 Headers 發送 Request，避免 GitHub Actions IP 被 YouTube RSS 擋掉"""
+def fetch_rss_feed(rss_url):
+    """帶上 Header 發送 Request，若失敗則降級直接使用 feedparser 解析"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+        "Accept": "application/xml,text/xml,*/*;q=0.9"
     }
     try:
         response = requests.get(rss_url, headers=headers, timeout=15)
         if response.status_code == 200:
-            return response.content
+            return feedparser.parse(response.content)
         else:
-            print(f"⚠️ 讀取 RSS 失敗，HTTP 狀態碼: {response.status_code}")
-            return None
+            print(f"⚠️ HTTP 狀態碼 ({response.status_code})，切換至 Direct Feed Parsing...")
     except Exception as e:
-        print(f"⚠️ 發送 RSS 請求時發生例外: {e}")
-        return None
+        print(f"⚠️ Request 發生例外 ({e})，切換至 Direct Feed Parsing...")
+
+    # Fallback 直接交給 feedparser
+    return feedparser.parse(rss_url)
 
 def fetch_videos_info(rss_url, count=3):
     """讀取最新的 N 支影片資訊與逐字稿"""
-    xml_content = fetch_rss_content(rss_url)
-    if not xml_content:
-        return []
-
-    feed = feedparser.parse(xml_content)
-    if not feed.entries:
-        print(f"⚠️ RSS 解析結果為空，請確認內容或網址: {rss_url}")
+    feed = fetch_rss_feed(rss_url)
+    if not feed or not feed.entries:
+        print(f"⚠️ RSS 解析結果為空: {rss_url}")
         return []
 
     videos_data = []
@@ -102,11 +97,10 @@ def fetch_videos_info(rss_url, count=3):
     return videos_data
 
 def generate_combined_analysis(target_name, videos_data):
-    """呼叫新版 Google GenAI SDK 進行綜合分析報告"""
+    """呼叫 Google GenAI SDK 進行綜合分析報告"""
     if not GEMINI_API_KEY:
         return "⚠️ 未設定 GEMINI_API_KEY，無法進行 AI 整合分析。"
 
-    # 使用新版 SDK 初始化 Client
     client = genai.Client(api_key=GEMINI_API_KEY)
 
     context_text = ""
