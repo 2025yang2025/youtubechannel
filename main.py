@@ -1,6 +1,6 @@
 import os
 import requests
-import scrapetube
+import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 from google import genai
 
@@ -13,76 +13,80 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 TARGETS = [
     {
         "name": "請支援輸贏",
-        "type": "playlist",
-        "id": "PL6XmsUWSei7yjLRhblIP1QxCCrwQlsdI4",
+        "url": "https://www.youtube.com/playlist?list=PL6XmsUWSei7yjLRhblIP1QxCCrwQlsdI4",
         "fetch_count": 3
     },
     {
         "name": "總編當莊",
-        "type": "channel",
-        "id": "UCg4sI1KkI3W7N5K6dOAnxKw",
+        "url": "https://www.youtube.com/channel/UCg4sI1KkI3W7N5K6dOAnxKw/videos",
         "fetch_count": 3
     },
     {
         "name": "陳威良 股市全威 (考股學家)",
-        "type": "channel",
-        "id": "UCccS6U6vRkB3UjJ9oJ54E3w",
+        "url": "https://www.youtube.com/channel/UCccS6U6vRkB3UjJ9oJ54E3w/videos",
         "fetch_count": 3
     },
     {
         "name": "《產經希引力》從趨勢找好產業",
-        "type": "playlist",
-        "id": "PLj52IfHdKHFdwnebZKoWGaBVcCRpWV7Ju",
+        "url": "https://www.youtube.com/playlist?list=PLj52IfHdKHFdwnebZKoWGaBVcCRpWV7Ju",
         "fetch_count": 3
     },
 ]
 
 # ================= 3. 核心與輔助函式 =================
 def fetch_videos_info(target):
-    """使用 scrapetube 抓取頻道或播放清單最新的影片與逐字稿"""
+    """使用 yt-dlp 抓取頻道或播放清單最新的影片資訊與逐字稿"""
     fetch_count = target.get("fetch_count", 3)
-    target_type = target.get("type")
-    target_id = target.get("id")
+    target_url = target.get("url")
 
     print(f"🚀 正在獲取 [{target['name']}] 最新 {fetch_count} 支影片...")
 
-    try:
-        if target_type == "playlist":
-            videos = scrapetube.get_playlist(playlist_id=target_id, limit=fetch_count)
-        else:
-            videos = scrapetube.get_channel(channel_id=target_id, limit=fetch_count)
-    except Exception as e:
-        print(f"⚠️ 讀取影片清單失敗 [{target['name']}]: {e}")
-        return []
+    ydl_opts = {
+        'extract_flat': True,
+        'playlistend': fetch_count,
+        'quiet': True,
+        'no_warnings': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    }
 
     videos_data = []
     yt_api = YouTubeTranscriptApi()
 
-    for vid in list(videos):
-        video_id = vid['videoId']
-        title = vid.get('title', {}).get('runs', [{}])[0].get('text', '無標題影片')
-        link = f"https://www.youtube.com/watch?v={video_id}"
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(target_url, download=False)
+            entries = info.get('entries', [])
 
-        # 抓取字幕/逐字稿
-        transcript_text = ""
-        try:
-            transcript_list = yt_api.list_transcripts(video_id)
-            try:
-                transcript = transcript_list.find_transcript(['zh-TW', 'zh-Hant', 'zh', 'en'])
-            except Exception:
-                transcript = transcript_list.find_generated_transcript(['zh-TW', 'zh-Hant', 'zh', 'en'])
-            
-            fetched_data = transcript.fetch()
-            transcript_text = " ".join([t['text'] for t in fetched_data])
-        except Exception:
-            transcript_text = "（無法取得字幕或該影片無提供字幕）"
+            for entry in entries:
+                if not entry:
+                    continue
+                video_id = entry.get('id')
+                title = entry.get('title', '無標題影片')
+                link = f"https://www.youtube.com/watch?v={video_id}"
 
-        videos_data.append({
-            "id": video_id,
-            "title": title,
-            "link": link,
-            "transcript": transcript_text
-        })
+                # 抓取字幕/逐字稿
+                transcript_text = ""
+                try:
+                    transcript_list = yt_api.list_transcripts(video_id)
+                    try:
+                        transcript = transcript_list.find_transcript(['zh-TW', 'zh-Hant', 'zh', 'en'])
+                    except Exception:
+                        transcript = transcript_list.find_generated_transcript(['zh-TW', 'zh-Hant', 'zh', 'en'])
+                    
+                    fetched_data = transcript.fetch()
+                    transcript_text = " ".join([t['text'] for t in fetched_data])
+                except Exception:
+                    transcript_text = "（無法取得字幕或該影片無提供字幕）"
+
+                videos_data.append({
+                    "id": video_id,
+                    "title": title,
+                    "link": link,
+                    "transcript": transcript_text
+                })
+
+    except Exception as e:
+        print(f"⚠️ 讀取影片清單失敗 [{target['name']}]: {e}")
 
     return videos_data
 
