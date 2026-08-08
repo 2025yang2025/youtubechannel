@@ -11,34 +11,34 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# ================= 2. 欲整合分析的目標清單 =================
+# ================= 2. 欲整合分析的目標清單 (調整為各 1 支) =================
 TARGETS = [
     {
         "name": "請支援輸贏",
         "url": "https://www.youtube.com/playlist?list=PL6XmsUWSei7yjLRhblIP1QxCCrwQlsdI4",
-        "fetch_count": 3
+        "fetch_count": 1
     },
     {
         "name": "總編當莊",
         "url": "https://www.youtube.com/channel/UCg4sI1KkI3W7N5K6dOAnxKw/videos",
-        "fetch_count": 3
+        "fetch_count": 1
     },
     {
         "name": "陳威良 股市全威 (考股學家)",
         "url": "https://www.youtube.com/channel/UCccS6U6vRkB3UjJ9oJ54E3w/videos",
-        "fetch_count": 3
+        "fetch_count": 1
     },
     {
         "name": "《產經希引力》從趨勢找好產業",
         "url": "https://www.youtube.com/playlist?list=PLj52IfHdKHFdwnebZKoWGaBVcCRpWV7Ju",
-        "fetch_count": 3
+        "fetch_count": 1
     },
 ]
 
 # ================= 3. 核心與輔助函式 =================
 def fetch_videos_info(target):
     """使用 yt-dlp 抓取頻道或播放清單最新的影片資訊與逐字稿"""
-    fetch_count = target.get("fetch_count", 3)
+    fetch_count = target.get("fetch_count", 1)
     target_url = target.get("url")
 
     print(f"🚀 正在獲取 [{target['name']}] 最新 {fetch_count} 支影片...")
@@ -92,7 +92,7 @@ def fetch_videos_info(target):
 
     return videos_data
 
-# 使用 gemini-2.0-flash-lite 輕量級模型，避開 404 與 429 限制
+# 使用 gemini-2.0-flash-lite，並設置自動重試與退避時間
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=5, min=20, max=60),
@@ -116,20 +116,19 @@ def generate_combined_analysis(target_name, videos_data):
         context_text += f"\n--- 影片 {idx} ---\n"
         context_text += f"標題：{v['title']}\n"
         context_text += f"連結：{v['link']}\n"
-        # 精簡逐字稿至前 800 字，大幅降低 Token 消耗量
-        context_text += f"逐字稿內容：{v['transcript'][:800]}\n"
+        # 單支影片截取精華 1500 字
+        context_text += f"逐字稿內容：{v['transcript'][:1500]}\n"
 
     prompt = f"""
-你是一名專業的財經數據與產業內容分析師。請針對【{target_name}】最近發布的 {len(videos_data)} 支 YouTube 影片內容進行「跨影片綜合整合分析報告」。
+你是一名專業的財經數據與產業內容分析師。請針對【{target_name}】最新發布的影片內容進行重點摘要與投資分析報告。
 
 分析素材如下：
 {context_text}
 
 請以繁體中文回覆，報告結構需包含：
-1. 🎯 **核心主題與總體脈絡**：這幾支影片共同探討的主要議題、市場趨勢或核心邏輯是什麼？
-2. 💡 **關鍵整合與分析結果**：
-   - 綜合多支影片提出的重點觀察、提及的重點公司/產業與數據分析。
-   - 影片之間是否有前後呼應、遞進關係或重點對比？
+1. 🎯 **核心主題與總體脈絡**：這支影片探討的主要議題、市場趨勢或核心邏輯是什麼？
+2. 💡 **關鍵分析結果**：
+   - 影片提出的重點觀察、提及的重點公司/產業與數據分析。
 3. 📌 **總結與可行性建議**：給投資人/觀看者的核心總結建議與觀察指標。
 
 請保持內容結構清晰、重點突出，適合在手機通訊軟體上閱讀。
@@ -145,7 +144,7 @@ def send_telegram(target_name, videos_data, analysis_result):
     """將整合分析報告發送至 Telegram"""
     video_links_str = "\n".join([f"• [{v['title']}]({v['link']})" for v in videos_data])
 
-    message = f"📊 *【{target_name}】跨影片綜合整合分析報告*\n\n"
+    message = f"📊 *【{target_name}】最新影片精華分析報告*\n\n"
     message += f"🎬 *分析影片來源 ({len(videos_data)} 支)：*\n{video_links_str}\n\n"
     message += f"-----------------------------------\n\n"
     message += analysis_result
@@ -177,17 +176,17 @@ def main():
             print(f"ℹ️ [{target_name}] 未抓取到任何影片。")
             continue
 
-        print(f"🤖 正在呼叫 Gemini AI 進行跨影片整合分析...")
+        print(f"🤖 正在呼叫 Gemini AI 進行分析...")
         analysis_result = generate_combined_analysis(target_name, videos_data)
 
-        print(f"📤 正在發送整合分析報告至 Telegram...")
+        print(f"📤 正在發送分析報告至 Telegram...")
         send_telegram(target_name, videos_data, analysis_result)
         print(f"✅ [{target_name}] 分析報告發送完成！\n")
 
-        # 每個目標間隔 20 秒，平緩請求節奏
+        # 每個目標之間間隔 25 秒，保護 API 不衝過頭
         if idx < len(TARGETS) - 1:
-            print("⏳ 等待 20 秒後繼續下一個頻道...")
-            time.sleep(20)
+            print("⏳ 等待 25 秒後繼續下一個頻道...")
+            time.sleep(25)
 
 if __name__ == "__main__":
     main()
