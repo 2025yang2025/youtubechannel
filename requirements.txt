@@ -1,5 +1,0 @@
-requests
-youtube-transcript-api
-google-genai
-yt-dlp
-tenacity
