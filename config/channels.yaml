@@ -1,0 +1,21 @@
+channels:
+
+  - name: 財經頻道A
+    channel_id: UC_REPLACE_ME
+    enabled: false
+    keywords:
+      - 台股
+      - 台積電
+      - AI
+      - 半導體
+    min_score: 50
+
+  - name: 科技頻道B
+    channel_id: UC_REPLACE_ME
+    enabled: false
+    keywords:
+      - AI
+      - GPU
+      - 伺服器
+      - 半導體
+    min_score: 50
