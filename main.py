@@ -11,7 +11,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# ================= 2. 欲整合分析的目標清單 (調整為各 1 支) =================
+# ================= 2. 欲整合分析的目標清單 =================
 TARGETS = [
     {
         "name": "請支援輸贏",
@@ -92,7 +92,7 @@ def fetch_videos_info(target):
 
     return videos_data
 
-# 使用 gemini-2.0-flash-lite，並設置自動重試與退避時間
+# 使用標準且支援度最高的 gemini-1.5-flash 模型
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=5, min=20, max=60),
@@ -100,7 +100,7 @@ def fetch_videos_info(target):
 )
 def call_gemini_api(client, prompt):
     return client.models.generate_content(
-        model='gemini-1.5-flash-8b',
+        model='gemini-1.5-flash',
         contents=prompt,
     )
 
@@ -116,7 +116,7 @@ def generate_combined_analysis(target_name, videos_data):
         context_text += f"\n--- 影片 {idx} ---\n"
         context_text += f"標題：{v['title']}\n"
         context_text += f"連結：{v['link']}\n"
-        # 單支影片截取精華 1500 字
+        # 截取逐字稿精華 1500 字，減少 Token 消耗
         context_text += f"逐字稿內容：{v['transcript'][:1500]}\n"
 
     prompt = f"""
@@ -183,10 +183,10 @@ def main():
         send_telegram(target_name, videos_data, analysis_result)
         print(f"✅ [{target_name}] 分析報告發送完成！\n")
 
-        # 每個目標之間間隔 25 秒，保護 API 不衝過頭
+        # 每個頻道任務之間間隔 20 秒，避免請求頻率過快
         if idx < len(TARGETS) - 1:
-            print("⏳ 等待 25 秒後繼續下一個頻道...")
-            time.sleep(25)
+            print("⏳ 等待 20 秒後繼續下一個頻道...")
+            time.sleep(20)
 
 if __name__ == "__main__":
     main()
