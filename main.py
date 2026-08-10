@@ -100,7 +100,7 @@ def fetch_videos_info(target):
 )
 def call_gemini_api(client, prompt):
     return client.models.generate_content(
-        model='gemini-2.0-flash-lite',
+        model='gemini-1.5-flash-8b',
         contents=prompt,
     )
 
