@@ -1,21 +1,33 @@
 channels:
 
-  - name: 財經頻道A
-    channel_id: UC_REPLACE_ME
-    enabled: false
+  - name: 總編當莊
+    channel_id: UCg4sI1KkI3W7N5K6dOAnxKw
+    enabled: true
+
     keywords:
       - 台股
       - 台積電
       - AI
       - 半導體
+      - 大盤
+      - 加權指數
+      - 個股
+
     min_score: 50
 
-  - name: 科技頻道B
-    channel_id: UC_REPLACE_ME
-    enabled: false
+
+  - name: 陳威良 股市全威 (考股學家)
+    channel_id: UCccS6U6vRkB3UjJ9oJ54E3w
+    enabled: true
+
     keywords:
+      - 台股
+      - 台積電
       - AI
-      - GPU
-      - 伺服器
       - 半導體
+      - 大盤
+      - 加權指數
+      - 個股
+      - 選股
+
     min_score: 50
