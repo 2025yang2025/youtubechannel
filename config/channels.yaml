@@ -58,7 +58,7 @@ playlists:
   # 請支援輸贏
   # ----------------------------------------------------------
   - name: "請支援輸贏"
-    playlist_id: "PL6XmsUWSei7yjLRhblIP1QxCCrwQlsdI4"
+    playlist_id: "@-john4000"
     enabled: true
 
     keywords:
@@ -78,7 +78,7 @@ playlists:
   # 產經希引力
   # ----------------------------------------------------------
   - name: "《產經希引力》從趨勢找好產業"
-    playlist_id: "PLj52IfHdKHFdwnebZKoWGaBVcCRpWV7Ju"
+    playlist_id: "@財經希引力"
     enabled: true
 
     keywords:
