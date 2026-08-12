@@ -24,6 +24,14 @@
     "da9LIazOXHg": {
       "status": "sent_rules",
       "score": 50
+    },
+    "zACEsupuhQ0": {
+      "status": "filtered",
+      "score": 46
+    },
+    "19PlSGxFXcs": {
+      "status": "sent_rules",
+      "score": 64
     }
   }
 }
