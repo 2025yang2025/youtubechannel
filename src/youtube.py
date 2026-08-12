@@ -384,40 +384,50 @@ def get_latest_videos_from_playlist(
         )
 
         results.append(
-            {
-                "video_id": video_id,
+    {
+        "video_id": video_id,
 
-                "title": snippet.get(
-                    "title",
-                    "",
-                ),
+        "title": snippet.get(
+            "title",
+            "",
+        ),
 
-                "description": snippet.get(
-                    "description",
-                    "",
-                ),
+        "description": snippet.get(
+            "description",
+            "",
+        ),
 
-                "published_at": snippet.get(
-                    "publishedAt",
-                ),
+        "published_at": snippet.get(
+            "publishedAt",
+        ),
 
-                "channel_id": snippet.get(
-                    "channelId",
-                ),
+        "channel_id": snippet.get(
+            "channelId",
+        ),
 
-                "channel_title": snippet.get(
-                    "channelTitle",
-                    "",
-                ),
+        # -------------------------------------------------
+        # 同時提供 channel_name / channel_title
+        # 相容 formatter.py、gemini.py
+        # -------------------------------------------------
 
-                "thumbnail": high_thumbnail,
+        "channel_name": snippet.get(
+            "channelTitle",
+            "",
+        ),
 
-                "url": (
-                    "https://www.youtube.com/watch?v="
-                    + video_id
-                ),
-            }
-        )
+        "channel_title": snippet.get(
+            "channelTitle",
+            "",
+        ),
+
+        "thumbnail": high_thumbnail,
+
+        "url": (
+            "https://www.youtube.com/watch?v="
+            + video_id
+        ),
+    }
+)
 
     return results
 
