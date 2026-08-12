@@ -1,4 +1,29 @@
 {
   "initialized": true,
-  "processed_videos": {}
+  "processed_videos": {
+    "jT292WoPjws": {
+      "status": "sent_rules",
+      "score": 59
+    },
+    "2wSRRN9BIyI": {
+      "status": "sent_rules",
+      "score": 60
+    },
+    "PsqosBzFukE": {
+      "status": "sent_rules",
+      "score": 71
+    },
+    "Nsc1-cq6PCs": {
+      "status": "sent_rules",
+      "score": 68
+    },
+    "wybu1jcvMtk": {
+      "status": "sent_rules",
+      "score": 64
+    },
+    "da9LIazOXHg": {
+      "status": "sent_rules",
+      "score": 50
+    }
+  }
 }
