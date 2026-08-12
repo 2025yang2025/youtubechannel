@@ -1,56 +1,57 @@
 from __future__ import annotations
 
 import json
+import re
 
-from google import genai
-
-
-PROMPT = r"""
-你是 YouTube 財經/科技影片摘要助手。
-
-請忠實整理提供的影片內容，
-不要自行捏造資料。
-
-只輸出 JSON。
-
-格式：
-
-{
-  "score": 0,
-  "category": "台股|美股|AI|半導體|總經|其他",
-  "summary": "100字內",
-  "key_points": ["...", "..."],
-  "facts": ["...", "..."],
-  "mentioned_assets": ["...", "..."],
-  "outlook": "整理影片作者觀點",
-  "risks": ["..."],
-  "reason": "評分理由"
-}
-
-score 是 0~100 的資訊重要度，
-不是預測漲跌的機率。
-"""
+import requests
 
 
-def _json(
-    text: str
+def _extract_json(
+    text: str,
 ) -> dict:
+
+    if not text:
+        return {}
 
     text = text.strip()
 
+    # ---------------------------------------------------------
+    # 直接 JSON
+    # ---------------------------------------------------------
 
-    if "```" in text:
+    try:
 
-        text = text.replace(
-            "```json",
-            ""
+        return json.loads(
+            text
         )
 
-        text = text.replace(
-            "```",
-            ""
-        )
+    except Exception:
+        pass
 
+    # ---------------------------------------------------------
+    # ```json ... ```
+    # ---------------------------------------------------------
+
+    match = re.search(
+        r"```(?:json)?\s*(.*?)\s*```",
+        text,
+        re.DOTALL | re.IGNORECASE,
+    )
+
+    if match:
+
+        try:
+
+            return json.loads(
+                match.group(1)
+            )
+
+        except Exception:
+            pass
+
+    # ---------------------------------------------------------
+    # 找第一個 { 到最後一個 }
+    # ---------------------------------------------------------
 
     start = text.find(
         "{"
@@ -60,78 +61,410 @@ def _json(
         "}"
     )
 
-
     if (
-        start < 0
-        or end < 0
+        start >= 0
+        and end > start
     ):
 
-        raise ValueError(
-            "Gemini 沒有回傳 JSON"
+        try:
+
+            return json.loads(
+                text[start:end + 1]
+            )
+
+        except Exception:
+            pass
+
+    return {}
+
+
+def _normalize_analysis(
+    data: dict,
+) -> dict:
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+
+        data = {}
+
+    # ---------------------------------------------------------
+    # score
+    # ---------------------------------------------------------
+
+    try:
+
+        score = int(
+            data.get(
+                "score",
+                0,
+            )
         )
 
+    except (
+        TypeError,
+        ValueError,
+    ):
 
-    return json.loads(
-        text[
-            start:
-            end + 1
-        ]
+        score = 0
+
+    score = max(
+        0,
+        min(
+            100,
+            score,
+        ),
     )
+
+    # ---------------------------------------------------------
+    # core points
+    # ---------------------------------------------------------
+
+    core_points = data.get(
+        "core_points",
+        [],
+    )
+
+    if not isinstance(
+        core_points,
+        list,
+    ):
+
+        core_points = []
+
+    core_points = [
+        str(x).strip()
+        for x in core_points
+        if str(x).strip()
+    ]
+
+    # ---------------------------------------------------------
+    # stocks
+    # ---------------------------------------------------------
+
+    stocks = data.get(
+        "stocks",
+        [],
+    )
+
+    if not isinstance(
+        stocks,
+        list,
+    ):
+
+        stocks = []
+
+    normalized_stocks = []
+
+    for item in stocks:
+
+        if isinstance(
+            item,
+            dict,
+        ):
+
+            code = str(
+                item.get(
+                    "code",
+                    "",
+                )
+            ).strip()
+
+        else:
+
+            code = str(
+                item
+            ).strip()
+
+        # 只接受 4 位股票代號
+        if re.fullmatch(
+            r"\d{4}",
+            code,
+        ):
+
+            if code not in [
+                x.get(
+                    "code"
+                )
+                for x
+                in normalized_stocks
+            ]:
+
+                normalized_stocks.append(
+                    {
+                        "code": code
+                    }
+                )
+
+    # ---------------------------------------------------------
+    # industries
+    # ---------------------------------------------------------
+
+    industries = data.get(
+        "industries",
+        [],
+    )
+
+    if not isinstance(
+        industries,
+        list,
+    ):
+
+        industries = []
+
+    industries = [
+        str(x).strip()
+        for x in industries
+        if str(x).strip()
+    ]
+
+    # ---------------------------------------------------------
+    # timeline
+    # ---------------------------------------------------------
+
+    timeline = data.get(
+        "timeline",
+        [],
+    )
+
+    if not isinstance(
+        timeline,
+        list,
+    ):
+
+        timeline = []
+
+    normalized_timeline = []
+
+    for item in timeline:
+
+        if isinstance(
+            item,
+            dict,
+        ):
+
+            time = str(
+                item.get(
+                    "time",
+                    "",
+                )
+            ).strip()
+
+            topic = str(
+                item.get(
+                    "topic",
+                    "",
+                )
+            ).strip()
+
+            if time and topic:
+
+                normalized_timeline.append(
+                    {
+                        "time": time,
+                        "topic": topic,
+                    }
+                )
+
+    return {
+        "score": score,
+        "core_points": core_points[:6],
+        "stocks": normalized_stocks[:15],
+        "industries": industries[:8],
+        "timeline": normalized_timeline[:6],
+    }
 
 
 def analyze_gemini(
-
     api_key: str,
-
     model: str,
-
     video: dict,
-
     text: str,
-
-    max_chars: int,
-
+    max_chars: int = 50000,
 ) -> dict:
 
-    client = genai.Client(
-        api_key=api_key
+    if not api_key:
+
+        raise RuntimeError(
+            "GEMINI_API_KEY 未設定"
+        )
+
+    text = str(
+        text or ""
     )
 
+    if len(text) > max_chars:
+
+        text = text[
+            :max_chars
+        ]
+
+    title = str(
+        video.get(
+            "title",
+            "",
+        )
+    )
+
+    channel_name = (
+        video.get(
+            "channel_name"
+        )
+        or video.get(
+            "channel_title"
+        )
+        or "YouTube"
+    )
 
     prompt = f"""
+你是一個「台股 YouTube 影片情報整理助手」。
 
-{PROMPT}
+你的工作不是提供投資建議，而是把影片內容整理成
+適合 Telegram 閱讀的精簡情報。
 
 頻道：
+{channel_name}
 
-{video['channel_name']}
+影片標題：
+{title}
 
-標題：
+影片內容：
+{text}
 
-{video['title']}
+請嚴格按照以下 JSON 格式輸出：
 
-網址：
+{{
+  "score": 0,
+  "core_points": [
+    "核心結論1",
+    "核心結論2",
+    "核心結論3"
+  ],
+  "stocks": [
+    {{
+      "code": "2330"
+    }}
+  ],
+  "industries": [
+    "半導體",
+    "記憶體"
+  ],
+  "timeline": [
+    {{
+      "time": "00:00",
+      "topic": "台股季線與大盤觀察"
+    }}
+  ]
+}}
 
-{video['url']}
+規則：
 
-影片描述：
-
-{video['description'][:5000]}
-
-字幕：
-
-{text[:max_chars]}
+1. score 為 0～100 的內容重要度。
+2. core_points 最多 6 點。
+3. 每一點必須是完整中文句子。
+4. 不要輸出 hashtag。
+5. 不要重複影片標題。
+6. 不要把影片 Description 原文整段複製。
+7. stocks 只放「影片明確提及」的股票代號。
+8. 股票代號必須是 4 位數字。
+9. 不確定是不是股票代號就不要列。
+10. 不要自行猜股票名稱。
+11. industries 最多 8 個。
+12. timeline 最多 6 個。
+13. timeline 沒有明確時間就不要自行創造時間。
+14. 不要提供買進、賣出、目標價等投資建議。
+15. 只整理影片內容。
+16. 只輸出 JSON，不要 Markdown。
 """
 
-
-    response = client.models.generate_content(
-
-        model=model,
-
-        contents=prompt,
+    url = (
+        "https://generativelanguage.googleapis.com/"
+        "v1beta/models/"
+        f"{model}:generateContent"
     )
 
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": prompt
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+        },
+    }
 
-    return _json(
-        response.text
+    response = requests.post(
+        url,
+        params={
+            "key": api_key
+        },
+        json=payload,
+        timeout=60,
     )
+
+    if response.status_code != 200:
+
+        raise RuntimeError(
+            "Gemini API "
+            f"{response.status_code}: "
+            f"{response.text}"
+        )
+
+    data = response.json()
+
+    candidates = data.get(
+        "candidates",
+        [],
+    )
+
+    if not candidates:
+
+        raise RuntimeError(
+            "Gemini 沒有回傳 candidates"
+        )
+
+    parts = (
+        candidates[0]
+        .get("content", {})
+        .get("parts", [])
+    )
+
+    if not parts:
+
+        raise RuntimeError(
+            "Gemini 沒有回傳內容"
+        )
+
+    raw_text = str(
+        parts[0].get(
+            "text",
+            "",
+        )
+    )
+
+    result = _extract_json(
+        raw_text
+    )
+
+    if not result:
+
+        raise RuntimeError(
+            "Gemini 回傳內容不是有效 JSON"
+        )
+
+    result = _normalize_analysis(
+        result
+    )
+
+    result[
+        "analysis_source"
+    ] = "gemini"
+
+    return result
