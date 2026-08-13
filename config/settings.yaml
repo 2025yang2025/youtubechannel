@@ -4,8 +4,10 @@ app:
 monitor:
 
   # 每個頻道每次最多檢查幾部影片
-  max_videos_per_channel: 3
+  max_videos_per_channel: 1
 
+  test_mode: true
+  
   bootstrap:
 
     # 第一次執行：
