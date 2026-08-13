@@ -710,7 +710,7 @@ for channel in channels:
             continue
 
 
-        total_sent += 1
+                total_sent += 1
 
 
         # =====================================================
@@ -719,7 +719,28 @@ for channel in channels:
         # TEST MODE 不寫入
         # =====================================================
 
-            if not test_mode:
+        if not test_mode:
+
+            mark_processed(
+                state,
+                video_id,
+                f"sent_{analysis_source}",
+                score
+            )
+
+            save_state(
+                state
+            )
+
+        else:
+
+            logging.info(
+                "TEST MODE: 不修改 state: %s",
+                video_id
+            )
+
+
+    if not test_mode:
 
         state["initialized"] = True
 
@@ -733,11 +754,13 @@ for channel in channels:
             "TEST MODE: state.json 未修改"
         )
 
+
     logging.info(
         "Finished: new=%s sent=%s",
         total_new,
         total_sent
     )
+
 
     return 0
 
