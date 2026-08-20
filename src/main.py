@@ -55,15 +55,7 @@ logging.basicConfig(
 def _get_channel_value(channel, name, default=None):
     """
     相容目前的 Channel dataclass / object。
-
-    例如：
-        channel.name
-        channel.handle
-        channel.channel_id
-        channel.keywords
-        channel.min_score
     """
-
     return getattr(
         channel,
         name,
@@ -136,15 +128,6 @@ def main() -> int:
 
     # =========================================================
     # Channels
-    #
-    # 現在支援：
-    #
-    #   channel_id: UCxxxxxxxx
-    #
-    # 或：
-    #
-    #   handle: "@berich888"
-    #
     # =========================================================
 
     all_channels = load_channels()
@@ -176,26 +159,16 @@ def main() -> int:
             "",
         )
 
-        # -----------------------------------------------------
-        # 至少需要 channel_id 或 handle
-        # -----------------------------------------------------
-
         if not channel_id and not handle:
             logging.warning(
-                "頻道 %s 沒有 channel_id "
-                "或 handle，跳過。",
+                "頻道 %s 沒有 channel_id 或 handle，跳過。",
                 _get_channel_value(
                     channel,
                     "name",
                     "Unknown",
                 ),
             )
-
             continue
-
-        # -----------------------------------------------------
-        # 舊版預設值排除
-        # -----------------------------------------------------
 
         if (
             channel_id
@@ -211,11 +184,9 @@ def main() -> int:
         channels.append(channel)
 
     if not channels:
-
         logging.error(
             "沒有啟用有效 YouTube 頻道。"
         )
-
         return 1
 
     # =========================================================
@@ -225,551 +196,206 @@ def main() -> int:
     state = load_state()
 
     # =========================================================
-    # Monitor settings
+    # Monitor settings (正確縮排在 main 函式內部)
     # =========================================================
 
-max_videos = int(
-    settings.get(
-        "monitor",
-        {}
-    ).get(
-        "max_videos_per_channel",
-        3
-    )
-)
-
-test_mode = bool(
-    settings.get(
-        "monitor",
-        {}
-    ).get(
-        "test_mode",
-        False
-    )
-)
-
-if test_mode:
-
-    logging.warning(
-        "========================================"
-    )
-
-    logging.warning(
-        "TEST MODE 已啟用"
-    )
-
-    logging.warning(
-        "將忽略 state.json 的已處理紀錄"
-    )
-
-    logging.warning(
-        "影片會重新進行 AI / Rules 分析"
-    )
-
-    logging.warning(
-        "========================================"
-    )
-
-
-bootstrap = bool(
-    settings.get(
-        "monitor",
-        {}
-    ).get(
-        "bootstrap",
-        {}
-    ).get(
-        "mark_existing_as_processed",
-        True
-    )
-)
-
-
-languages = (
-    settings.get(
-        "transcript",
-        {}
-    ).get(
-        "languages",
-        [
-            "zh-TW",
-            "zh-Hant",
-            "zh",
-            "en",
-        ]
-    )
-)
-
-
-fallback_description = bool(
-    settings.get(
-        "transcript",
-        {}
-    ).get(
-        "fallback_to_description",
-        True
-    )
-)
-
-
-max_chars = int(
-    settings.get(
-        "ai",
-        {}
-    ).get(
-        "max_transcript_chars",
-        50000
-    )
-)
-
-
-telegram_limit = int(
-    settings.get(
-        "telegram",
-        {}
-    ).get(
-        "max_message_chars",
-        3900
-    )
-)
-
-
-total_new = 0
-total_sent = 0
-
-
-if gemini_key and use_gemini:
-
-    logging.info(
-        "AI mode: Gemini available"
-    )
-
-else:
-
-    logging.info(
-        "AI mode: FREE RULES ONLY"
-    )
-
-
-for channel in channels:
-
-    logging.info(
-        "Checking: %s",
-        channel.name
-    )
-
-    try:
-
-        videos = get_latest_videos(
-            youtube_key,
-            channel,
-            max_videos
+    max_videos = int(
+        settings.get(
+            "monitor",
+            {}
+        ).get(
+            "max_videos_per_channel",
+            3
         )
-
-    except Exception:
-
-        logging.exception(
-            "YouTube API failed: %s",
-            channel.name
-        )
-
-        continue
-
-    logging.info(
-        "Found %s videos: %s",
-        len(videos),
-        channel.name
     )
 
-    for video in videos:
+    test_mode = bool(
+        settings.get(
+            "monitor",
+            {}
+        ).get(
+            "test_mode",
+            False
+        )
+    )
 
-        video_id = str(
-            video.get(
-                "video_id",
-                ""
+    if test_mode:
+        logging.warning("========================================")
+        logging.warning("TEST MODE 已啟用")
+        logging.warning("將忽略 state.json 的已處理紀錄")
+        logging.warning("影片會重新進行 AI / Rules 分析")
+        logging.warning("========================================")
+
+    bootstrap = bool(
+        settings.get(
+            "monitor",
+            {}
+        ).get(
+            "bootstrap",
+            {}
+        ).get(
+            "mark_existing_as_processed",
+            True
+        )
+    )
+
+    languages = (
+        settings.get(
+            "transcript",
+            {}
+        ).get(
+            "languages",
+            [
+                "zh-TW",
+                "zh-Hant",
+                "zh",
+                "en",
+            ]
+        )
+    )
+
+    fallback_description = bool(
+        settings.get(
+            "transcript",
+            {}
+        ).get(
+            "fallback_to_description",
+            True
+        )
+    )
+
+    max_chars = int(
+        settings.get(
+            "ai",
+            {}
+        ).get(
+            "max_transcript_chars",
+            50000
+        )
+    )
+
+    telegram_limit = int(
+        settings.get(
+            "telegram",
+            {}
+        ).get(
+            "max_message_chars",
+            3900
+        )
+    )
+
+    total_new = 0
+    total_sent = 0
+
+    if gemini_key and use_gemini:
+        logging.info("AI mode: Gemini available")
+    else:
+        logging.info("AI mode: FREE RULES ONLY")
+
+    for channel in channels:
+        logging.info("Checking: %s", channel.name)
+
+        try:
+            videos = get_latest_videos(
+                youtube_key,
+                channel,
+                max_videos
             )
-        ).strip()
-
-        if not video_id:
-
-            logging.warning(
-                "影片缺少 video_id，跳過"
-            )
-
+        except Exception:
+            logging.exception("YouTube API failed: %s", channel.name)
             continue
 
+        logging.info("Found %s videos: %s", len(videos), channel.name)
 
-        # =====================================================
-        # 正常模式：檢查 state
-        #
-        # 測試模式：完全忽略 state
-        # =====================================================
+        for video in videos:
+            video_id = str(video.get("video_id", "")).strip()
 
-        if not test_mode:
-
-            if is_processed(
-                state,
-                video_id
-            ):
-
-                logging.info(
-                    "Skip processed: %s",
-                    video_id
-                )
-
+            if not video_id:
+                logging.warning("影片缺少 video_id，跳過")
                 continue
 
-
-        logging.info(
-            "Processing video: %s",
-            video.get(
-                "title",
-                video_id
-            )
-        )
-
-
-        total_new += 1
-
-
-        # =====================================================
-        # Bootstrap
-        #
-        # 測試模式絕對不能進 bootstrap skip
-        # =====================================================
-
-        if (
-            not test_mode
-            and not state.get(
-                "initialized",
-                False
-            )
-            and bootstrap
-        ):
-
-            logging.info(
-                "Bootstrap skip: %s",
-                video_id
-            )
-
-            mark_processed(
-                state,
-                video_id,
-                "bootstrap_skipped",
-                None
-            )
-
-            save_state(
-                state
-            )
-
-            continue
-
-
-        # =====================================================
-        # 取得字幕
-        # =====================================================
-
-        transcript, source = get_transcript(
-            video_id,
-            languages
-        )
-
-
-        # =====================================================
-        # 沒有字幕 → 使用 Description
-        # =====================================================
-
-        if (
-            not transcript
-            and fallback_description
-        ):
-
-            transcript = str(
-                video.get(
-                    "description",
-                    ""
-                )
-            )
-
-            source = "description"
-
-            logging.info(
-                "使用影片 Description 作為分析文字: %s",
-                video_id
-            )
-
-
-        if not transcript:
-
-            logging.warning(
-                "沒有字幕也沒有 Description: %s",
-                video_id
-            )
-
             if not test_mode:
+                if is_processed(state, video_id):
+                    logging.info("Skip processed: %s", video_id)
+                    continue
 
-                mark_processed(
-                    state,
-                    video_id,
-                    "no_text",
-                    None
-                )
+            logging.info("Processing video: %s", video.get("title", video_id))
+            total_new += 1
 
-                save_state(
-                    state
-                )
+            if (
+                not test_mode
+                and not state.get("initialized", False)
+                and bootstrap
+            ):
+                logging.info("Bootstrap skip: %s", video_id)
+                mark_processed(state, video_id, "bootstrap_skipped", None)
+                save_state(state)
+                continue
 
-            continue
+            transcript, source = get_transcript(video_id, languages)
 
+            if not transcript and fallback_description:
+                transcript = str(video.get("description", ""))
+                source = "description"
+                logging.info("使用影片 Description 作為分析文字: %s", video_id)
 
-        # =====================================================
-        # 分析
-        # =====================================================
+            if not transcript:
+                logging.warning("沒有字幕也沒有 Description: %s", video_id)
+                if not test_mode:
+                    mark_processed(state, video_id, "no_text", None)
+                    save_state(state)
+                continue
 
-        analysis = None
-
-        analysis_source = "rules"
-
-
-        if (
-            gemini_key
-            and use_gemini
-        ):
-
-            try:
-
-                analysis = analyze_gemini(
-                    api_key=gemini_key,
-                    model=gemini_model,
-                    video=video,
-                    text=transcript,
-                    max_chars=max_chars,
-                )
-
-                analysis_source = "gemini"
-
-                logging.info(
-                    "Gemini analysis success: %s",
-                    video_id
-                )
-
-            except Exception as exc:
-
-                logging.warning(
-                    "Gemini failed, fallback rules: %s",
-                    exc
-                )
-
-
-        # =====================================================
-        # Gemini 失敗 → Rules
-        # =====================================================
-
-        if (
-            analysis is None
-            and fallback_rules
-        ):
-
-            analysis = analyze_rules(
-                title=video.get(
-                    "title",
-                    ""
-                ),
-                description=video.get(
-                    "description",
-                    ""
-                ),
-                transcript=transcript,
-                keywords=channel.keywords,
-            )
-
+            analysis = None
             analysis_source = "rules"
 
+            if gemini_key and use_gemini:
+                try:
+                    analysis = analyze_gemini(
+                        api_key=gemini_key,
+                        model=gemini_model,
+                        video=video,
+                        text=transcript,
+                        max_chars=max_chars,
+                    )
+                    analysis_source = "gemini"
+                    logging.info("Gemini analysis success: %s", video_id)
+                except Exception:
+                    logging.exception("Gemini 分析失敗，嘗試回退規則模式: %s", video_id)
 
-        if analysis is None:
-
-            logging.error(
-                "No analysis available: %s",
-                video_id
-            )
-
-            continue
-
-
-        # =====================================================
-        # 告訴 formatter 分析來源
-        # =====================================================
-
-        analysis[
-            "analysis_source"
-        ] = analysis_source
-
-
-        # =====================================================
-        # Score
-        # =====================================================
-
-        try:
-
-            score = int(
-                analysis.get(
-                    "score",
-                    0
+            if not analysis and fallback_rules:
+                analysis = analyze_rules(
+                    video=video,
+                    text=transcript,
+                    channel=channel,
                 )
-            )
+                analysis_source = "rules"
+                logging.info("Rules analysis complete: %s", video_id)
 
-        except (
-            TypeError,
-            ValueError,
-        ):
+            if analysis:
+                msg = format_message(
+                    video=video,
+                    channel=channel,
+                    analysis=analysis,
+                    source=analysis_source,
+                    max_chars=telegram_limit,
+                )
 
-            score = 0
-
-
-        score = max(
-            0,
-            min(
-                100,
-                score
-            )
-        )
-
-
-        logging.info(
-            "%s | score=%s | source=%s | text=%s",
-            video.get(
-                "title",
-                video_id
-            ),
-            score,
-            analysis_source,
-            source
-        )
-
-
-        # =====================================================
-        # 分數過濾
-        # =====================================================
-
-        if score < channel.min_score:
-
-            logging.info(
-                "Filtered: %s | score=%s < min=%s",
-                video_id,
-                score,
-                channel.min_score
-            )
+                if send_message(telegram_token, telegram_chat_id, msg):
+                    total_sent += 1
+                    logging.info("Telegram 訊息發送成功: %s", video_id)
 
             if not test_mode:
+                mark_processed(state, video_id, analysis_source, analysis)
+                save_state(state)
 
-                mark_processed(
-                    state,
-                    video_id,
-                    "filtered",
-                    score
-                )
-
-                save_state(
-                    state
-                )
-
-            continue
-
-
-        # =====================================================
-        # Telegram 格式
-        # =====================================================
-
-        message = format_message(
-            video,
-            analysis
-        )
-
-
-        # =====================================================
-        # Telegram
-        # =====================================================
-
-        try:
-
-            send_message(
-                telegram_token,
-                telegram_chat_id,
-                message,
-                telegram_limit
-            )
-
-        except Exception:
-
-            logging.exception(
-                "Telegram failed: %s",
-                video_id
-            )
-
-            continue
-
-
-        total_sent += 1
-
-
-        # =====================================================
-        # 正常模式才寫入 state
-        #
-        # TEST MODE 不寫入
-        # =====================================================
-
-        if not test_mode:
-
-            mark_processed(
-                state,
-                video_id,
-                f"sent_{analysis_source}",
-                score
-            )
-
-            save_state(
-                state
-            )
-
-        else:
-
-            logging.info(
-                "TEST MODE: 不修改 state: %s",
-                video_id
-            )
-
-
-    # =========================================================
-    # 所有影片處理完成
-    # =========================================================
-
-    if not test_mode:
-
+    if not state.get("initialized", False):
         state["initialized"] = True
+        save_state(state)
 
-        save_state(
-            state
-        )
-
-    else:
-
-        logging.warning(
-            "TEST MODE: state.json 未修改"
-        )
-
-
-    logging.info(
-        "Finished: new=%s sent=%s",
-        total_new,
-        total_sent
-    )
-
-
+    logging.info("處理完成。新影片: %s, 成功發送: %s", total_new, total_sent)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(
-        main()
-    )
+    sys.exit(main())
