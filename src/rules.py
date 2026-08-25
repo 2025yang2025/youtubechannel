@@ -3,6 +3,10 @@ from __future__ import annotations
 import re
 
 
+# ============================================================
+# 分類關鍵字
+# ============================================================
+
 CATEGORY_KEYWORDS = {
     "台股": [
         "台股",
@@ -11,6 +15,8 @@ CATEGORY_KEYWORDS = {
         "上市",
         "上櫃",
         "台積電",
+        "聯電",
+        "聯發科",
     ],
 
     "美股": [
@@ -48,14 +54,28 @@ CATEGORY_KEYWORDS = {
         "CPI",
         "GDP",
     ],
+
+    "綠能": [
+        "綠能",
+        "太陽能",
+        "光電",
+        "風電",
+        "再生能源",
+        "儲能",
+        "能源",
+    ],
+
+    "機器人": [
+        "機器人",
+        "Robot",
+        "人形機器人",
+        "自動化",
+    ],
 }
 
 
 # ============================================================
 # 股票代號 → 中文名稱
-#
-# 先建立常見台股對照表。
-# 如果影片只有出現代號，Telegram 仍會顯示中文名稱。
 # ============================================================
 
 STOCK_NAMES = {
@@ -104,6 +124,7 @@ STOCK_NAMES = {
     "5274": "信驊",
     "5483": "中美晶",
     "5871": "中租-KY",
+    "6179": "亞通",
     "6239": "力成",
     "6669": "緯穎",
     "6672": "騰輝電子-KY",
@@ -117,8 +138,6 @@ STOCK_NAMES = {
 
 # ============================================================
 # 公司名稱 → 股票代號
-#
-# 讓「台積電」也可以反查成 2330。
 # ============================================================
 
 NAME_TO_STOCK = {
@@ -127,90 +146,147 @@ NAME_TO_STOCK = {
 }
 
 
-ASSET_PATTERNS = [
-    r"\b\d{4}\b",
+# ============================================================
+# 影片常見公司名稱
+# ============================================================
 
-    r"台積電",
-    r"聯發科",
-    r"鴻海",
-    r"廣達",
-    r"緯穎",
-    r"台達電",
-    r"聯電",
-    r"日月光",
-    r"南亞科",
-    r"國巨",
-    r"欣興",
-    r"南電",
-    r"力積電",
-    r"華邦電",
-    r"群聯",
-    r"威剛",
-    r"AMD",
-    r"NVIDIA",
-    r"輝達",
-    r"Intel",
+COMPANY_NAMES = [
+    "台積電",
+    "聯電",
+    "聯發科",
+    "鴻海",
+    "廣達",
+    "緯穎",
+    "台達電",
+    "日月光",
+    "南亞科",
+    "國巨",
+    "欣興",
+    "南電",
+    "力積電",
+    "華邦電",
+    "群聯",
+    "威剛",
+    "亞通",
+    "亞德客",
+    "中鋼",
+    "台泥",
+    "統一",
+    "台塑",
+    "南亞",
+    "光寶科",
+    "智邦",
+    "華碩",
+    "金像電",
+    "技嘉",
+    "微星",
+    "台光電",
+    "研華",
+    "義隆",
+    "聯詠",
+    "緯創",
+    "創意",
+    "嘉澤",
+    "世芯",
+    "臻鼎",
+    "祥碩",
+    "信驊",
+    "中美晶",
+    "中租",
+    "富世達",
+    "高力",
+    "AMD",
+    "NVIDIA",
+    "輝達",
+    "Intel",
 ]
 
 
+# ============================================================
+# 句子切割
+# ============================================================
+
 def _sentences(
-    text: str
+    text: str,
 ) -> list[str]:
 
     raw = re.split(
         r"[。！？!?；;\n]",
-        text
+        text,
     )
 
-    return [
-        s.strip()
-        for s in raw
-        if len(
-            s.strip()
-        ) >= 12
-    ]
+    result = []
 
+    for sentence in raw:
+
+        sentence = sentence.strip()
+
+        if len(sentence) >= 12:
+
+            result.append(
+                sentence
+            )
+
+    return result
+
+
+# ============================================================
+# 分類
+# ============================================================
 
 def _category(
-    text: str
+    text: str,
 ) -> str:
 
-    scores = {
-        name:
-        sum(
-            text.lower().count(
+    scores = {}
+
+    lower_text = text.lower()
+
+    for name, keywords in CATEGORY_KEYWORDS.items():
+
+        score = 0
+
+        for keyword in keywords:
+
+            score += lower_text.count(
                 keyword.lower()
             )
-            for keyword in keywords
-        )
-        for name, keywords
-        in CATEGORY_KEYWORDS.items()
-    }
+
+        scores[name] = score
+
+    if not scores:
+
+        return "其他"
 
     best = max(
         scores,
-        key=scores.get
+        key=scores.get,
     )
 
     if scores[best] <= 0:
+
         return "其他"
 
     return best
 
 
+# ============================================================
+# 找股票代號 / 公司名稱
+# ============================================================
+
 def _assets(
-    text: str
+    text: str,
 ) -> list[str]:
 
     found = []
 
     # --------------------------------------------------------
-    # 先找四位數股票代號
+    # 四位數股票代號
     # --------------------------------------------------------
 
     codes = re.findall(
         r"(?<!\d)\d{4}(?!\d)",
-        text
+        text,
     )
 
     for code in codes:
@@ -220,42 +296,21 @@ def _assets(
         )
 
     # --------------------------------------------------------
-    # 再找公司名稱
+    # 公司名稱
     # --------------------------------------------------------
 
-    names = [
-        "台積電",
-        "聯發科",
-        "鴻海",
-        "廣達",
-        "緯穎",
-        "台達電",
-        "聯電",
-        "日月光",
-        "南亞科",
-        "國巨",
-        "欣興",
-        "南電",
-        "力積電",
-        "華邦電",
-        "群聯",
-        "威剛",
-        "AMD",
-        "NVIDIA",
-        "輝達",
-        "Intel",
-    ]
+    lower_text = text.lower()
 
-    for name in names:
+    for name in COMPANY_NAMES:
 
-        if name.lower() in text.lower():
+        if name.lower() in lower_text:
 
             found.append(
                 name
             )
 
     # --------------------------------------------------------
-    # 去除重複
+    # 去重
     # --------------------------------------------------------
 
     result = []
@@ -265,9 +320,12 @@ def _assets(
     for item in found:
 
         if item in seen:
+
             continue
 
-        seen.add(item)
+        seen.add(
+            item
+        )
 
         result.append(
             item
@@ -276,14 +334,21 @@ def _assets(
     return result[:20]
 
 
+# ============================================================
+# 股票顯示名稱
+# ============================================================
+
 def _asset_display_name(
-    asset: str
+    asset: str,
 ) -> str:
 
-    # 四位數代號
+    # --------------------------------------------------------
+    # 股票代號
+    # --------------------------------------------------------
+
     if re.fullmatch(
         r"\d{4}",
-        asset
+        asset,
     ):
 
         name = STOCK_NAMES.get(
@@ -298,8 +363,10 @@ def _asset_display_name(
 
         return asset
 
-
+    # --------------------------------------------------------
     # 公司名稱
+    # --------------------------------------------------------
+
     code = NAME_TO_STOCK.get(
         asset
     )
@@ -314,7 +381,7 @@ def _asset_display_name(
 
 
 def _assets_with_names(
-    assets: list[str]
+    assets: list[str],
 ) -> list[str]:
 
     result = []
@@ -328,6 +395,7 @@ def _assets_with_names(
         )
 
         if display in seen:
+
             continue
 
         seen.add(
@@ -340,6 +408,10 @@ def _assets_with_names(
 
     return result[:15]
 
+
+# ============================================================
+# 評分
+# ============================================================
 
 def _score(
     text: str,
@@ -366,19 +438,22 @@ def _score(
         "記憶體",
         "突破",
         "創高",
+        "轉強",
+        "黑馬",
+        "成長",
     ]
 
-    text_lower = text.lower()
+    lower_text = text.lower()
 
     for word in important:
 
-        if word.lower() in text_lower:
+        if word.lower() in lower_text:
 
             score += 4
 
     for word in keywords:
 
-        if word.lower() in text_lower:
+        if word.lower() in lower_text:
 
             score += 3
 
@@ -388,7 +463,7 @@ def _score(
 
     if re.search(
         r"\d{2,}",
-        text
+        text,
     ):
 
         score += 5
@@ -397,10 +472,26 @@ def _score(
         0,
         min(
             100,
-            score
-        )
+            score,
+        ),
     )
 
+
+# ============================================================
+# Rules 分析
+#
+# ★ 重要：
+# 同時支援以下參數：
+#
+# video
+# text
+# title
+# description
+# transcript
+# keywords
+#
+# 避免 main.py / rules.py 再次發生參數不一致。
+# ============================================================
 
 def analyze_rules(
     title: str = "",
@@ -408,28 +499,16 @@ def analyze_rules(
     transcript: str = "",
     keywords: list[str] | None = None,
     video: dict | None = None,
+    text: str = "",
 ) -> dict:
-
-    # --------------------------------------------------------
-    # 相容 main.py
-    #
-    # main.py 現在會傳：
-    #
-    # analyze_rules(
-    #     video=video,
-    #     title=...,
-    #     description=...,
-    #     transcript=...,
-    #     keywords=...
-    # )
-    #
-    # 所以這裡同時支援 video。
-    # --------------------------------------------------------
 
     if keywords is None:
 
         keywords = []
 
+    # --------------------------------------------------------
+    # 從 video 補資料
+    # --------------------------------------------------------
 
     if video:
 
@@ -438,7 +517,7 @@ def analyze_rules(
             title = str(
                 video.get(
                     "title",
-                    ""
+                    "",
                 )
             )
 
@@ -447,80 +526,109 @@ def analyze_rules(
             description = str(
                 video.get(
                     "description",
-                    ""
+                    "",
                 )
             )
 
+    # --------------------------------------------------------
+    # 如果 main.py 已經直接傳 text
+    #
+    # 優先使用 text
+    # --------------------------------------------------------
 
-    text = (
-        f"{title}\n"
-        f"{description}\n"
-        f"{transcript}"
-    )
+    if text:
 
+        analysis_text = text
+
+    else:
+
+        analysis_text = (
+            f"{title}\n"
+            f"{description}\n"
+            f"{transcript}"
+        )
+
+    # --------------------------------------------------------
+    # 如果 text 是空的，仍然保留影片資料
+    # --------------------------------------------------------
+
+    if not analysis_text.strip():
+
+        analysis_text = (
+            f"{title}\n"
+            f"{description}"
+        )
+
+    # --------------------------------------------------------
+    # 句子
+    # --------------------------------------------------------
 
     sentences = _sentences(
-        text
+        analysis_text
     )
-
 
     ranked = []
 
+    # --------------------------------------------------------
+    # 重要句子評分
+    # --------------------------------------------------------
 
     for sentence in sentences:
 
         sentence_score = 0
 
-
         if "%" in sentence:
 
             sentence_score += 4
 
-
         if re.search(
             r"\d{2,}",
-            sentence
+            sentence,
         ):
 
             sentence_score += 3
 
+        lower_sentence = (
+            sentence.lower()
+        )
 
-        for key in keywords:
+        for keyword in keywords:
 
-            if key.lower() in sentence.lower():
+            if keyword.lower() in lower_sentence:
 
                 sentence_score += 3
 
+        for category_keywords in CATEGORY_KEYWORDS.values():
 
-        for category in CATEGORY_KEYWORDS:
+            for word in category_keywords:
 
-            for word in CATEGORY_KEYWORDS[
-                category
-            ]:
-
-                if word.lower() in sentence.lower():
+                if word.lower() in lower_sentence:
 
                     sentence_score += 1
-
 
         ranked.append(
             (
                 sentence_score,
-                sentence
+                sentence,
             )
         )
 
+    # --------------------------------------------------------
+    # 分數高的排前面
+    # --------------------------------------------------------
 
     ranked.sort(
         key=lambda x: x[0],
-        reverse=True
+        reverse=True,
     )
 
+    # --------------------------------------------------------
+    # 取重點
+    # --------------------------------------------------------
 
     key_points = []
 
     seen = set()
-
 
     for _, sentence in ranked:
 
@@ -528,16 +636,13 @@ def analyze_rules(
 
             continue
 
-
         seen.add(
             sentence
         )
 
-
         key_points.append(
             sentence
         )
-
 
         if len(
             key_points
@@ -545,16 +650,35 @@ def analyze_rules(
 
             break
 
+    # --------------------------------------------------------
+    # 沒有句子時
+    # --------------------------------------------------------
 
     if not key_points:
 
-        key_points = [
-            title
-        ]
+        if title:
 
+            key_points = [
+                title
+            ]
+
+        elif description:
+
+            key_points = [
+                description[:180]
+            ]
+
+        else:
+
+            key_points = [
+                "影片未取得足夠文字內容。"
+            ]
+
+    # --------------------------------------------------------
+    # 關鍵資訊
+    # --------------------------------------------------------
 
     facts = []
-
 
     for sentence in key_points:
 
@@ -564,7 +688,7 @@ def analyze_rules(
 
             or re.search(
                 r"\d{2,}",
-                sentence
+                sentence,
             )
         ):
 
@@ -572,32 +696,55 @@ def analyze_rules(
                 sentence
             )
 
-
     if not facts:
 
         facts = key_points[:3]
 
+    # --------------------------------------------------------
+    # 分類
+    # --------------------------------------------------------
 
     category = _category(
-        text
+        analysis_text
     )
 
+    # --------------------------------------------------------
+    # 股票 / 公司
+    # --------------------------------------------------------
 
     assets = _assets(
-        text
+        analysis_text
     )
-
 
     assets_display = _assets_with_names(
         assets
     )
 
+    # --------------------------------------------------------
+    # 評分
+    # --------------------------------------------------------
 
     score = _score(
-        text,
-        keywords
+        analysis_text,
+        keywords,
     )
 
+    # --------------------------------------------------------
+    # Summary
+    # --------------------------------------------------------
+
+    summary = key_points[0]
+
+    if len(summary) > 180:
+
+        summary = (
+            summary[:180]
+            + "..."
+        )
+
+    # --------------------------------------------------------
+    # 回傳
+    # --------------------------------------------------------
 
     return {
 
@@ -608,7 +755,7 @@ def analyze_rules(
             category,
 
         "summary":
-            key_points[0][:180],
+            summary,
 
         "key_points":
             key_points[:6],
@@ -627,13 +774,14 @@ def analyze_rules(
 
         "risks":
             [
-                "規則式分析可能無法理解上下文。",
-                "股票代號/公司名稱可能需要人工確認。",
+                "規則式分析可能無法完整理解影片上下文。",
+                "股票代號與公司名稱仍可能需要人工確認。",
             ],
 
         "reason":
             (
-                "依影片關鍵字、數字、"
-                "百分比與重要詞彙計分。"
+                "依影片關鍵字、"
+                "數字、百分比、"
+                "產業詞彙與重要詞彙計分。"
             ),
     }
