@@ -8,103 +8,66 @@ import yaml
 from dotenv import load_dotenv
 
 
+# ============================================================
+# 專案根目錄
+# ============================================================
+
 ROOT = Path(__file__).resolve().parents[1]
 
-load_dotenv(
-    ROOT / ".env"
-)
+# 載入 .env
+load_dotenv(ROOT / ".env")
 
+
+# ============================================================
+# Channel 資料結構
+# ============================================================
 
 @dataclass
 class Channel:
-    """
-    YouTube 頻道設定。
-
-    可以使用：
-        channel_id: UCxxxxxxxx
-    或：
-        handle: "@example"
-    """
-
     name: str
 
+    # 可以只使用 handle，不一定需要 channel_id
     channel_id: str = ""
 
     handle: str = ""
 
     enabled: bool = True
 
-    keywords: list[str] = field(
-        default_factory=list
-    )
+    keywords: list[str] = field(default_factory=list)
 
     min_score: int = 50
 
 
-@dataclass
-class Playlist:
-    """
-    YouTube Playlist 設定。
-    """
-
-    name: str
-
-    playlist_id: str
-
-    enabled: bool = True
-
-    keywords: list[str] = field(
-        default_factory=list
-    )
-
-    min_score: int = 50
-
+# ============================================================
+# Settings
+# ============================================================
 
 def load_settings() -> dict:
-    """
-    載入 config/settings.yaml
-    """
+    path = ROOT / "config" / "settings.yaml"
 
-    path = (
-        ROOT
-        / "config"
-        / "settings.yaml"
-    )
+    if not path.exists():
+        return {}
 
     with open(
         path,
         "r",
         encoding="utf-8",
     ) as f:
-
         return yaml.safe_load(f) or {}
 
 
+# ============================================================
+# Channels
+# ============================================================
+
 def load_channels() -> list[Channel]:
-    """
-    載入 YouTube Channels。
 
-    支援：
+    path = ROOT / "config" / "channels.yaml"
 
-        channels:
-
-          - name: "總編當莊"
-            handle: "@berich888"
-
-          - name: "陳威良"
-            handle: "@ccstock888"
-
-    也支援舊格式：
-
-          - name: "xxx"
-            channel_id: "UCxxxxxxxx"
-    """
-
-    path = (
-        ROOT
-        / "config"
-        / "channels.yaml"
-    )
+    if not path.exists():
+        raise FileNotFoundError(
+            f"找不到頻道設定檔: {path}"
+        )
 
     with open(
         path,
@@ -114,73 +77,69 @@ def load_channels() -> list[Channel]:
 
         raw = yaml.safe_load(f) or {}
 
-    channels: list[Channel] = []
+    result: list[Channel] = []
 
-    for item in raw.get(
-        "channels",
-        [],
-    ):
+    for item in raw.get("channels", []):
+
+        if not isinstance(item, dict):
+            continue
 
         name = str(
             item.get(
                 "name",
-                "Unnamed Channel",
+                ""
             )
-        )
+        ).strip()
 
         channel_id = str(
             item.get(
                 "channel_id",
-                "",
+                ""
             )
-            or ""
         ).strip()
 
         handle = str(
             item.get(
                 "handle",
-                "",
+                ""
             )
-            or ""
         ).strip()
 
         enabled = bool(
             item.get(
                 "enabled",
-                True,
+                True
             )
         )
 
         keywords = [
-            str(x)
+            str(x).strip()
             for x in item.get(
                 "keywords",
-                [],
+                []
             )
+            if str(x).strip()
         ]
 
         min_score = int(
             item.get(
                 "min_score",
-                50,
+                50
             )
         )
 
-        # -----------------------------------------------------
-        # 至少要有 channel_id 或 handle
-        # -----------------------------------------------------
+        # ----------------------------------------------------
+        # 沒有 channel_id 也沒關係，只要有 handle 即可
+        # ----------------------------------------------------
 
-        if not channel_id and not handle:
+        if enabled and not channel_id and not handle:
 
-            # 不直接讓整個程式崩潰，
-            # 交給 main.py 顯示 warning。
             print(
                 f"WARNING: Channel '{name}' "
-                f"沒有 channel_id 或 handle，"
-                f"將由上層跳過。"
+                f"沒有 channel_id 或 handle，將由上層跳過。"
             )
 
-        channels.append(
+        result.append(
             Channel(
                 name=name,
                 channel_id=channel_id,
@@ -191,135 +150,34 @@ def load_channels() -> list[Channel]:
             )
         )
 
-    return channels
+    return result
 
 
-def load_playlists() -> list[Playlist]:
-    """
-    載入 YouTube Playlists。
-
-    例如：
-
-        playlists:
-
-          - name: "請支援輸贏"
-            playlist_id: "PLxxxxxxxx"
-            enabled: true
-    """
-
-    path = (
-        ROOT
-        / "config"
-        / "channels.yaml"
-    )
-
-    with open(
-        path,
-        "r",
-        encoding="utf-8",
-    ) as f:
-
-        raw = yaml.safe_load(f) or {}
-
-    playlists: list[Playlist] = []
-
-    for item in raw.get(
-        "playlists",
-        [],
-    ):
-
-        name = str(
-            item.get(
-                "name",
-                "Unnamed Playlist",
-            )
-        )
-
-        playlist_id = str(
-            item.get(
-                "playlist_id",
-                "",
-            )
-            or ""
-        ).strip()
-
-        enabled = bool(
-            item.get(
-                "enabled",
-                True,
-            )
-        )
-
-        keywords = [
-            str(x)
-            for x in item.get(
-                "keywords",
-                [],
-            )
-        ]
-
-        min_score = int(
-            item.get(
-                "min_score",
-                50,
-            )
-        )
-
-        if not playlist_id:
-
-            print(
-                f"WARNING: Playlist '{name}' "
-                f"沒有 playlist_id，"
-                f"將由上層跳過。"
-            )
-
-            continue
-
-        playlists.append(
-            Playlist(
-                name=name,
-                playlist_id=playlist_id,
-                enabled=enabled,
-                keywords=keywords,
-                min_score=min_score,
-            )
-        )
-
-    return playlists
-
+# ============================================================
+# Environment
+# ============================================================
 
 def get_env(
     name: str,
     default: str = "",
 ) -> str:
-    """
-    取得環境變數。
-    """
 
     return os.getenv(
         name,
-        default,
+        default
     ).strip()
 
 
 def required_env(
     name: str,
 ) -> str:
-    """
-    取得必要環境變數。
 
-    如果不存在，直接拋出錯誤。
-    """
-
-    value = get_env(
-        name
-    )
+    value = get_env(name)
 
     if not value:
 
         raise RuntimeError(
-            "Missing required environment variable: "
-            f"{name}"
+            f"Missing required environment variable: {name}"
         )
 
     return value
