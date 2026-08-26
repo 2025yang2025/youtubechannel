@@ -1,52 +1,70 @@
 channels:
 
   - name: "關我什麼事"
+    channel_id: ""
     handle: "@關我什麼事"
-    channel_id: ""
     enabled: true
-    keywords:
-      - "台股"
-      - "美股"
-      - "總經"
-      - "聯準會"
-      - "降息"
-      - "關稅"
-      - "AI"
-      - "半導體"
-      - "台積電"
-      - "股票"
-      - "ETF"
-    min_score: 50
 
-  - name: "鈔錢部署"
-    handle: "@ctsfeatured"
-    channel_id: ""
-    enabled: true
     keywords:
       - "台股"
-      - "投資"
-      - "財經"
-      - "股票"
-      - "ETF"
+      - "大盤"
+      - "加權指數"
+      - "櫃買"
       - "台積電"
+      - "聯發科"
       - "鴻海"
       - "半導體"
       - "AI"
-      - "記憶體"
+      - "電子"
+      - "金融"
+      - "產業"
+      - "投資"
+      - "股票"
+
     min_score: 50
 
-  - name: "Catch大錢潮"
-    handle: ""
+
+  - name: "鈔前部署"
     channel_id: ""
+    handle: "@鈔前部署"
     enabled: true
+
     keywords:
       - "台股"
-      - "美股"
       - "大盤"
-      - "財報"
+      - "加權指數"
+      - "台積電"
+      - "聯發科"
+      - "鴻海"
       - "AI"
       - "半導體"
-      - "股票"
+      - "電子"
       - "投資"
-      - "總經"
+      - "股票"
+      - "選股"
+
+    min_score: 50
+
+
+  - name: "Catch大錢潮"
+    channel_id: ""
+    handle: "@Catch大錢潮"
+    enabled: true
+
+    keywords:
+      - "台股"
+      - "大盤"
+      - "加權指數"
+      - "台積電"
+      - "聯發科"
+      - "鴻海"
+      - "AI"
+      - "半導體"
+      - "電子"
+      - "金融"
+      - "產業"
+      - "投資"
+      - "股票"
+      - "選股"
+
     min_score: 50
