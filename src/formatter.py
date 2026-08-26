@@ -1,470 +1,392 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
-
-import yaml
+from typing import Any
 
 
-ROOT = Path(__file__).resolve().parents[1]
+# ============================================================
+# 股票代號 → 中文名稱
+# ============================================================
 
-STOCK_FILE = (
-    ROOT
-    / "config"
-    / "stock_names.yaml"
-)
+STOCK_NAMES = {
+    "1101": "台泥",
+    "1216": "統一",
+    "1301": "台塑",
+    "1303": "南亞",
+    "1402": "遠東新",
+    "1476": "儒鴻",
+    "1590": "亞德客-KY",
+    "1605": "華新",
+    "2002": "中鋼",
+    "2207": "和泰車",
+    "2301": "光寶科",
+    "2303": "聯電",
+    "2308": "台達電",
+    "2317": "鴻海",
+    "2327": "國巨",
+    "2330": "台積電",
+    "2344": "華邦電",
+    "2345": "智邦",
+    "2357": "華碩",
+    "2368": "金像電",
+    "2376": "技嘉",
+    "2377": "微星",
+    "2382": "廣達",
+    "2383": "台光電",
+    "2395": "研華",
+    "2408": "南亞科",
+    "2412": "中華電",
+    "2454": "聯發科",
+    "2458": "義隆",
+    "2474": "可成",
+    "3034": "聯詠",
+    "3037": "欣興",
+    "3044": "健鼎",
+    "3231": "緯創",
+    "3260": "威剛",
+    "3443": "創意",
+    "3533": "嘉澤",
+    "3661": "世芯-KY",
+    "3711": "日月光投控",
+    "4904": "遠傳",
+    "4958": "臻鼎-KY",
+    "5269": "祥碩",
+    "5274": "信驊",
+    "5483": "中美晶",
+    "5871": "中租-KY",
+    "6179": "亞通",
+    "6239": "力成",
+    "6669": "緯穎",
+    "6672": "騰輝電子-KY",
+    "6770": "力積電",
+    "6805": "富世達",
+    "8046": "南電",
+    "8299": "群聯",
+    "8996": "高力",
+}
 
 
-def load_stock_names() -> dict[str, str]:
-    """
-    載入股票代號 → 中文名稱。
-    """
+# ============================================================
+# 安全取得欄位
+# ============================================================
 
-    if not STOCK_FILE.exists():
-        return {}
+def _get_value(
+    obj: Any,
+    key: str,
+    default: Any = "",
+) -> Any:
 
-    try:
+    if obj is None:
+        return default
 
-        with open(
-            STOCK_FILE,
-            "r",
-            encoding="utf-8",
-        ) as f:
+    if isinstance(obj, dict):
+        return obj.get(key, default)
 
-            data = yaml.safe_load(f) or {}
+    return getattr(
+        obj,
+        key,
+        default,
+    )
 
-        stocks = data.get(
-            "stocks",
-            {},
+
+# ============================================================
+# 股票名稱轉換
+# ============================================================
+
+def _format_asset(
+    asset: str,
+) -> str:
+
+    asset = str(asset).strip()
+
+    if not asset:
+        return ""
+
+    # 已經是「2330 台積電」
+    if re.match(
+        r"^\d{4}\s+.+$",
+        asset,
+    ):
+        return asset
+
+    # 純股票代號
+    if re.fullmatch(
+        r"\d{4}",
+        asset,
+    ):
+
+        name = STOCK_NAMES.get(
+            asset
         )
 
-        return {
-            str(code): str(name)
-            for code, name
-            in stocks.items()
-        }
+        if name:
+            return f"{asset} {name}"
 
-    except Exception:
-        return {}
+        return asset
+
+    return asset
 
 
-STOCK_NAMES = load_stock_names()
+# ============================================================
+# 股票清單
+# ============================================================
 
-
-def normalize_stock_code(
-    code: str,
-) -> str:
-
-    code = str(code).strip()
-
-    return code
-
-
-def stock_label(
-    code: str,
-) -> str:
-    """
-    將股票代號轉成：
-
-        台積電（2330）
-
-    如果沒有資料：
-
-        2330（名稱待確認）
-    """
-
-    code = normalize_stock_code(
-        code
-    )
-
-    name = STOCK_NAMES.get(
-        code
-    )
-
-    if name:
-
-        return f"{name}（{code}）"
-
-    return f"{code}（名稱待確認）"
-
-
-def extract_stock_codes(
-    text: str,
+def _format_assets(
+    assets: Any,
 ) -> list[str]:
-    """
-    從文字中抓股票代號。
 
-    只接受 4 位數字，
-    避免把時間、年份、百分比亂當股票。
-
-    例如：
-
-        2330 → 保留
-        2303 → 保留
-
-        0811 → 排除
-        2026 → 排除
-        04:30 → 排除
-    """
-
-    if not text:
+    if not assets:
         return []
 
-    candidates = re.findall(
-        r"(?<!\d)(\d{4})(?!\d)",
-        text,
-    )
+    if isinstance(
+        assets,
+        str,
+    ):
+        assets = [assets]
 
     result = []
+    seen = set()
 
-    for code in candidates:
+    for asset in assets:
 
-        # 排除年份
-        if code.startswith(
-            ("19", "20")
-        ):
+        formatted = _format_asset(
+            asset
+        )
+
+        if not formatted:
             continue
 
-        # 排除月份/日期類
-        if code[:2] in {
-            "01",
-            "02",
-            "03",
-            "04",
-            "05",
-            "06",
-            "07",
-            "08",
-            "09",
-            "10",
-            "11",
-            "12",
-        }:
-            # 如果它真的在股票清單裡，
-            # 仍然保留
-            if code not in STOCK_NAMES:
-                continue
-
-        # 只保留已知股票
-        if code not in STOCK_NAMES:
+        if formatted in seen:
             continue
 
-        if code not in result:
+        seen.add(formatted)
 
-            result.append(code)
+        result.append(
+            formatted
+        )
 
-    return result
+    return result[:10]
 
 
-def format_stock_list(
-    analysis: dict,
-    video: dict,
+# ============================================================
+# 清除雜訊
+# ============================================================
+
+def _clean_text(
+    text: Any,
+    max_length: int = 180,
 ) -> str:
 
-    codes = []
-
-    # ---------------------------------------------------------
-    # 優先使用 AI / Rules 已經辨識出的股票
-    # ---------------------------------------------------------
-
-    mentioned = analysis.get(
-        "stocks",
-        [],
-    )
-
-    if isinstance(
-        mentioned,
-        list,
-    ):
-
-        for item in mentioned:
-
-            if isinstance(
-                item,
-                dict,
-            ):
-
-                code = str(
-                    item.get(
-                        "code",
-                        "",
-                    )
-                ).strip()
-
-            else:
-
-                code = str(
-                    item
-                ).strip()
-
-            if (
-                code in STOCK_NAMES
-                and code not in codes
-            ):
-
-                codes.append(code)
-
-    # ---------------------------------------------------------
-    # 再從影片文字補抓
-    # ---------------------------------------------------------
-
-    combined_text = " ".join(
-        [
-            str(
-                video.get(
-                    "title",
-                    "",
-                )
-            ),
-            str(
-                video.get(
-                    "description",
-                    "",
-                )
-            ),
-        ]
-    )
-
-    for code in extract_stock_codes(
-        combined_text
-    ):
-
-        if code not in codes:
-
-            codes.append(code)
-
-    # ---------------------------------------------------------
-    # 沒有股票
-    # ---------------------------------------------------------
-
-    if not codes:
-
-        return "• 本片未辨識到明確股票標的"
-
-    return "\n".join(
-        f"• {stock_label(code)}"
-        for code in codes[:15]
-    )
-
-
-def clean_text(
-    text: str,
-) -> str:
-
-    if not text:
+    if text is None:
         return ""
 
     text = str(text)
 
-    # ---------------------------------------------------------
-    # 移除 URL
-    # ---------------------------------------------------------
-
-    text = re.sub(
-        r"https?://\S+",
-        "",
-        text,
+    text = text.replace(
+        "\r",
+        " ",
     )
 
-    # ---------------------------------------------------------
-    # 移除大量 hashtag
-    # ---------------------------------------------------------
-
     text = re.sub(
-        r"#[\w\u4e00-\u9fff\-]+",
-        "",
-        text,
-    )
-
-    # ---------------------------------------------------------
-    # 移除多餘空白
-    # ---------------------------------------------------------
-
-    text = re.sub(
-        r"[ \t]+",
+        r"\s+",
         " ",
         text,
     )
 
-    text = re.sub(
-        r"\n{3,}",
-        "\n\n",
-        text,
-    )
+    text = text.strip()
 
-    return text.strip()
+    if len(text) > max_length:
 
-
-def format_core_points(
-    analysis: dict,
-) -> str:
-
-    points = analysis.get(
-        "core_points",
-        [],
-    )
-
-    if not points:
-
-        points = analysis.get(
-            "key_points",
-            [],
+        text = (
+            text[:max_length]
+            + "..."
         )
 
-    if not isinstance(
+    return text
+
+
+# ============================================================
+# 清理重點
+# ============================================================
+
+def _clean_points(
+    points: Any,
+    limit: int = 5,
+) -> list[str]:
+
+    if not points:
+        return []
+
+    if isinstance(
         points,
-        list,
+        str,
     ):
+        points = [points]
 
-        return "• 本片重點整理不足"
-
-    cleaned = []
+    result = []
+    seen = set()
 
     for point in points:
 
-        text = clean_text(
-            str(point)
+        point = _clean_text(
+            point,
+            220,
         )
 
-        if not text:
+        if not point:
             continue
 
-        # 避免整段 hashtag
-        if text.startswith("#"):
+        # 避免完全重複
+        normalized = point.lower()
+
+        if normalized in seen:
             continue
 
-        if text not in cleaned:
+        seen.add(normalized)
 
-            cleaned.append(text)
-
-    if not cleaned:
-
-        return "• 本片重點整理不足"
-
-    return "\n".join(
-        f"• {point}"
-        for point in cleaned[:6]
-    )
-
-
-def format_industries(
-    analysis: dict,
-) -> str:
-
-    industries = analysis.get(
-        "industries",
-        [],
-    )
-
-    if not isinstance(
-        industries,
-        list,
-    ):
-
-        return "• 未明確辨識"
-
-    cleaned = []
-
-    for industry in industries:
-
-        text = clean_text(
-            str(industry)
+        result.append(
+            point
         )
 
-        if not text:
-            continue
+        if len(result) >= limit:
+            break
 
-        if text not in cleaned:
-
-            cleaned.append(text)
-
-    if not cleaned:
-
-        return "• 未明確辨識"
-
-    return "\n".join(
-        f"• {item}"
-        for item in cleaned[:8]
-    )
+    return result
 
 
-def format_timeline(
+# ============================================================
+# 核心主題
+# ============================================================
+
+def _build_topics(
     analysis: dict,
-) -> str:
+) -> list[str]:
 
-    timeline = analysis.get(
-        "timeline",
-        [],
+    points = _clean_points(
+        analysis.get(
+            "key_points",
+            [],
+        ),
+        3,
     )
 
-    if not isinstance(
-        timeline,
-        list,
-    ):
+    if points:
+        return points
 
-        return ""
-
-    result = []
-
-    for item in timeline:
-
-        if isinstance(
-            item,
-            dict,
-        ):
-
-            time = str(
-                item.get(
-                    "time",
-                    "",
-                )
-            ).strip()
-
-            text = clean_text(
-                str(
-                    item.get(
-                        "topic",
-                        item.get(
-                            "text",
-                            "",
-                        ),
-                    )
-                )
-            )
-
-            if time and text:
-
-                result.append(
-                    f"{time} {text}"
-                )
-
-        else:
-
-            text = clean_text(
-                str(item)
-            )
-
-            if text:
-                result.append(text)
-
-    if not result:
-
-        return ""
-
-    return "\n".join(
-        result[:6]
+    summary = _clean_text(
+        analysis.get(
+            "summary",
+            "",
+        ),
+        180,
     )
 
+    if summary:
+        return [summary]
+
+    return []
+
+
+# ============================================================
+# 產生 Telegram 訊息
+#
+# 支援：
+#
+# format_message(video, analysis)
+#
+# 以及：
+#
+# format_message(
+#     video=video,
+#     analysis=analysis,
+#     channel=channel,
+# )
+# ============================================================
 
 def format_message(
     video: dict,
     analysis: dict,
+    channel: Any = None,
 ) -> str:
-    """
-    Telegram 最終訊息。
 
-    固定為精簡情報格式。
-    """
+    # --------------------------------------------------------
+    # 影片資訊
+    # --------------------------------------------------------
+
+    title = _clean_text(
+        _get_value(
+            video,
+            "title",
+            "未命名影片",
+        ),
+        200,
+    )
+
+    description = _clean_text(
+        _get_value(
+            video,
+            "description",
+            "",
+        ),
+        300,
+    )
+
+    channel_name = _get_value(
+        video,
+        "channel_name",
+        "",
+    )
+
+    # --------------------------------------------------------
+    # 如果 video 沒有 channel_name
+    # 從 channel 補
+    # --------------------------------------------------------
+
+    if not channel_name:
+
+        channel_name = _get_value(
+            channel,
+            "name",
+            "",
+        )
+
+    if not channel_name:
+
+        channel_name = "YouTube 頻道"
+
+    channel_name = _clean_text(
+        channel_name,
+        80,
+    )
+
+    # --------------------------------------------------------
+    # Video URL
+    # --------------------------------------------------------
+
+    video_url = _get_value(
+        video,
+        "url",
+        "",
+    )
+
+    if not video_url:
+
+        video_id = _get_value(
+            video,
+            "video_id",
+            "",
+        )
+
+        if video_id:
+
+            video_url = (
+                "https://www.youtube.com/watch?v="
+                + str(video_id)
+            )
+
+    # --------------------------------------------------------
+    # 分析資料
+    # --------------------------------------------------------
 
     score = analysis.get(
         "score",
@@ -473,73 +395,72 @@ def format_message(
 
     try:
         score = int(score)
-    except (
-        TypeError,
-        ValueError,
-    ):
+    except Exception:
         score = 0
 
-    score = max(
-        0,
-        min(
-            100,
-            score,
-        ),
-    )
-
-    channel_name = (
-        video.get(
-            "channel_name"
-        )
-        or video.get(
-            "channel_title"
-        )
-        or "YouTube"
-    )
-
-    title = clean_text(
-        video.get(
-            "title",
-            "",
-        )
-    )
-
-    core_points = format_core_points(
-        analysis
-    )
-
-    stocks = format_stock_list(
-        analysis,
-        video,
-    )
-
-    industries = format_industries(
-        analysis
-    )
-
-    timeline = format_timeline(
-        analysis
-    )
-
-    analysis_source = (
+    category = _clean_text(
         analysis.get(
-            "analysis_source",
-            "rules",
+            "category",
+            "其他",
+        ),
+        50,
+    )
+
+    # --------------------------------------------------------
+    # 標的
+    # --------------------------------------------------------
+
+    assets = _format_assets(
+        analysis.get(
+            "mentioned_assets",
+            [],
         )
     )
 
-    if analysis_source == "gemini":
+    # --------------------------------------------------------
+    # 重點
+    # --------------------------------------------------------
 
-        analysis_label = "AI 摘要"
+    key_points = _clean_points(
+        analysis.get(
+            "key_points",
+            [],
+        ),
+        5,
+    )
 
-    else:
+    # --------------------------------------------------------
+    # 關鍵資訊
+    # --------------------------------------------------------
 
-        analysis_label = "規則式摘要"
+    facts = _clean_points(
+        analysis.get(
+            "facts",
+            [],
+        ),
+        3,
+    )
+
+    # --------------------------------------------------------
+    # Summary
+    # --------------------------------------------------------
+
+    summary = _clean_text(
+        analysis.get(
+            "summary",
+            "",
+        ),
+        180,
+    )
+
+    # --------------------------------------------------------
+    # 建立訊息
+    # --------------------------------------------------------
 
     lines = []
 
     lines.append(
-        f"📌【{analysis_label}重要度 {score}/100】"
+        f"📌【{category}｜重要度 {score}/100】"
     )
 
     lines.append("")
@@ -554,77 +475,165 @@ def format_message(
         f"🎬 {title}"
     )
 
-    lines.append("")
+    # --------------------------------------------------------
+    # 核心主題
+    # --------------------------------------------------------
 
-    lines.append(
-        "━━━━━━━━━━━━━━"
-    )
-
-    lines.append("")
-
-    lines.append(
-        "🎯 核心結論"
-    )
-
-    lines.append(
-        core_points
-    )
-
-    lines.append("")
-
-    lines.append(
-        "📈 提及標的"
-    )
-
-    lines.append(
-        stocks
-    )
-
-    lines.append("")
-
-    lines.append(
-        "🏭 提及產業"
-    )
-
-    lines.append(
-        industries
-    )
-
-    if timeline:
+    if summary:
 
         lines.append("")
 
         lines.append(
-            "⏱ 影片重點"
+            "🎯 核心主題"
         )
 
         lines.append(
-            timeline
+            f"• {summary}"
         )
 
-    lines.append("")
+    # --------------------------------------------------------
+    # 重點整理
+    # --------------------------------------------------------
 
-    lines.append(
-        "⚠️ 僅整理影片內容，不代表投資建議。"
+    if key_points:
+
+        lines.append("")
+
+        lines.append(
+            "📌 重點整理"
+        )
+
+        for index, point in enumerate(
+            key_points,
+            start=1,
+        ):
+
+            lines.append(
+                f"{index}. {point}"
+            )
+
+    # --------------------------------------------------------
+    # 提及標的 / 產業
+    # --------------------------------------------------------
+
+    if assets:
+
+        lines.append("")
+
+        lines.append(
+            "📈 提及標的 / 產業"
+        )
+
+        for asset in assets:
+
+            lines.append(
+                f"• {asset}"
+            )
+
+    # --------------------------------------------------------
+    # 關鍵資訊
+    # --------------------------------------------------------
+
+    if facts:
+
+        # 避免 facts 與 key_points 完全重複
+        unique_facts = []
+
+        for fact in facts:
+
+            if fact in key_points:
+                continue
+
+            unique_facts.append(
+                fact
+            )
+
+        if unique_facts:
+
+            lines.append("")
+
+            lines.append(
+                "📊 關鍵資訊"
+            )
+
+            for fact in unique_facts[:3]:
+
+                lines.append(
+                    f"• {fact}"
+                )
+
+    # --------------------------------------------------------
+    # 觀點
+    # --------------------------------------------------------
+
+    outlook = _clean_text(
+        analysis.get(
+            "outlook",
+            "",
+        ),
+        300,
     )
 
-    lines.append("")
+    if outlook:
 
-    url = video.get(
-        "url",
-        "",
+        lines.append("")
+
+        lines.append(
+            "🧠 分析方式"
+        )
+
+        lines.append(
+            f"• {outlook}"
+        )
+
+    # --------------------------------------------------------
+    # 注意事項
+    # --------------------------------------------------------
+
+    risks = _clean_points(
+        analysis.get(
+            "risks",
+            [],
+        ),
+        2,
     )
 
-    if url:
+    if risks:
+
+        lines.append("")
+
+        lines.append(
+            "⚠️ 注意事項"
+        )
+
+        for risk in risks:
+
+            lines.append(
+                f"• {risk}"
+            )
+
+    # --------------------------------------------------------
+    # 原影片
+    # --------------------------------------------------------
+
+    if video_url:
+
+        lines.append("")
 
         lines.append(
             "🔗 原影片"
         )
 
         lines.append(
-            url
+            video_url
         )
 
-    return "\n".join(
+    # --------------------------------------------------------
+    # 最終訊息
+    # --------------------------------------------------------
+
+    message = "\n".join(
         lines
     )
+
+    return message.strip()
