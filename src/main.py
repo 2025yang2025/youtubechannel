@@ -1,138 +1,273 @@
 from __future__ import annotations
-import logging, sys
-from .config import get_env, load_channels, load_settings, required_env
-from .formatter import format_message, split_message
-from .gemini import analyze_gemini
-from .rules import analyze_rules
-from .state import is_processed, load_state, mark_processed, save_state
-from .telegram import send_message
-from .transcript import get_transcript
-from .youtube import get_latest_videos
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+import json
+import re
+from urllib import error
+from urllib import request
 
-def main() -> int:
-    settings = load_settings()
-    youtube_key = required_env("YOUTUBE_API_KEY")
-    telegram_token = required_env("TELEGRAM_BOT_TOKEN")
-    telegram_chat_id = required_env("TELEGRAM_CHAT_ID")
-    gemini_key = get_env("GEMINI_API_KEY")
-    gemini_model = get_env("GEMINI_MODEL", settings.get("ai", {}).get("default_gemini_model", "gemini-3.7-flash"))
-    use_gemini = bool(settings.get("free_mode", {}).get("use_gemini_if_available", True))
-    fallback_rules = bool(settings.get("free_mode", {}).get("fallback_to_rules", True))
-    test_mode = bool(settings.get("monitor", {}).get("test_mode", False))
 
-    if test_mode:
-        logging.warning("=" * 40)
-        logging.warning("TEST MODE 已啟用")
-        logging.warning("將忽略 state.json 的已處理紀錄")
-        logging.warning("=" * 40)
+def _extract_json(text: str) -> dict:
 
-    channels = [c for c in load_channels() if c.enabled]
-    if not channels:
-        logging.error("沒有啟用有效 YouTube 頻道。")
-        return 1
+    text = text.strip()
 
-    state = load_state()
-    max_videos = int(settings.get("monitor", {}).get("max_videos_per_channel", 1))
-    bootstrap = bool(settings.get("monitor", {}).get("bootstrap", {}).get("mark_existing_as_processed", False))
-    languages = settings.get("transcript", {}).get("languages", ["zh-TW", "zh-Hant", "zh", "en"])
-    fallback_description = bool(settings.get("transcript", {}).get("fallback_to_description", True))
-    max_chars = int(settings.get("ai", {}).get("max_transcript_chars", 50000))
-    telegram_limit = int(settings.get("telegram", {}).get("max_message_chars", 3900))
+    text = re.sub(
+        r"^```json",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
 
-    logging.info("AI mode: Gemini available" if gemini_key and use_gemini else "AI mode: FREE RULES ONLY")
-    total_new = total_sent = 0
+    text = re.sub(
+        r"^```",
+        "",
+        text,
+    )
 
-    for channel in channels:
-        logging.info("Checking: %s", channel.name)
-        try:
-            videos = get_latest_videos(youtube_key, channel, max_videos)
-            logging.info("Found %s videos: %s", len(videos), channel.name)
-        except Exception as exc:
-            logging.error("YouTube API failed: %s | %s", channel.name, exc)
-            continue
+    text = re.sub(
+        r"```$",
+        "",
+        text,
+    )
 
-        for video in videos:
-            video_id = video["video_id"]
-            if not test_mode and is_processed(state, video_id):
-                continue
-            total_new += 1
-            logging.info("Processing video: %s", video["title"])
+    text = text.strip()
 
-            if not test_mode and not state.get("initialized", False) and bootstrap:
-                mark_processed(state, video_id, "bootstrap_skipped", None)
-                save_state(state)
-                continue
+    start = text.find("{")
+    end = text.rfind("}")
 
-            try:
-                transcript, source = get_transcript(video_id, languages)
-            except Exception as exc:
-                logging.warning("字幕取得失敗 %s: %s", video_id, exc)
-                transcript, source = "", "description"
+    if start >= 0 and end > start:
 
-            if not transcript and fallback_description:
-                transcript = video.get("description", "")
-                source = "description"
-                logging.info("使用影片 Description 作為分析文字: %s", video_id)
+        text = text[
+            start:end + 1
+        ]
 
-            if not transcript:
-                logging.warning("沒有可分析文字，跳過: %s", video_id)
-                continue
+    return json.loads(text)
 
-            analysis = None
-            analysis_source = "rules"
 
-            if gemini_key and use_gemini:
-                try:
-                    analysis = analyze_gemini(
-                        api_key=gemini_key, model=gemini_model, video=video,
-                        text=transcript, max_chars=max_chars, channel_name=channel.name
-                    )
-                    analysis_source = "gemini"
-                except Exception:
-                    logging.exception("Gemini 分析失敗，回退 Rules: %s", video_id)
+def analyze_gemini(
+    api_key: str,
+    model: str,
+    video: dict,
+    text: str,
+    max_chars: int = 50000,
+) -> dict:
 
-            if analysis is None and fallback_rules:
-                try:
-                    analysis = analyze_rules(
-                        title=video.get("title", ""),
-                        description=video.get("description", ""),
-                        transcript=transcript,
-                        keywords=channel.keywords,
-                        channel_name=channel.name,
-                    )
-                except Exception:
-                    logging.exception("Rules analysis failed: %s", video_id)
+    text = text[:max_chars]
 
-            if analysis is None:
-                continue
+    title = video.get(
+        "title",
+        "",
+    )
 
-            stocks = analysis.get("stocks", [])
-            if not stocks:
-                logging.info("沒有明確強調個股，不發送 Telegram: %s", video_id)
-                if not test_mode:
-                    mark_processed(state, video_id, f"no_stock_{analysis_source}", analysis.get("score", 0))
-                    save_state(state)
-                continue
+    channel_name = video.get(
+        "channel_name",
+        "",
+    )
 
-            message = format_message(video=video, analysis=analysis, channel_name=channel.name)
-            try:
-                for chunk in split_message(message, telegram_limit):
-                    send_message(telegram_token, telegram_chat_id, chunk, telegram_limit)
-                total_sent += 1
-            except Exception:
-                logging.exception("Telegram failed: %s", video_id)
-                continue
+    prompt = f"""
+你是一個台股 YouTube 影片分析助手。
 
-            if not test_mode:
-                mark_processed(state, video_id, f"sent_{analysis_source}", analysis.get("score", 0))
-                save_state(state)
+請分析下面的 YouTube 影片內容。
 
-    state["initialized"] = True
-    save_state(state)
-    logging.info("Finished: new=%s sent=%s", total_new, total_sent)
-    return 0
+頻道：
+{channel_name}
 
-if __name__ == "__main__":
-    sys.exit(main())
+影片標題：
+{title}
+
+影片內容：
+{text}
+
+你的任務非常單純：
+
+1. 找出影片真正有討論、分析或強調的個股。
+2. 股票必須盡量提供：
+   - 中文公司名稱
+   - 4位數股票代號
+3. 不要把單純出現在 hashtag、網址、宣傳文字中的股票算進去。
+4. 不要把影片只是順帶提到的股票列為主要個股。
+5. 每一檔個股整理 1～3 個最重要的影片觀點。
+6. 如果影片沒有明確分析個股，就整理影片最重要的 3～5 個重點。
+7. 不要提供投資建議。
+8. 不要自行推測影片沒有說的事情。
+9. 不要輸出「後續發展」。
+10. 不要輸出「評分理由」。
+11. 不要輸出長篇摘要。
+12. 忽略招生、加入群組、Line、Telegram、網址等宣傳內容。
+
+請只輸出 JSON：
+
+{{
+  "score": 0,
+  "summary": "一句話整理影片核心內容",
+  "key_points": [
+    "影片最重要重點",
+    "影片第二重要重點",
+    "影片第三重要重點"
+  ],
+  "mentioned_stocks": [
+    {{
+      "code": "2330",
+      "name": "台積電",
+      "points": [
+        "影片對台積電的第一個重點",
+        "影片對台積電的第二個重點"
+      ]
+    }}
+  ]
+}}
+
+注意：
+
+如果無法確認股票代號，不要亂填。
+如果只知道公司名稱，可以填 code 為空字串。
+"""
+
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": prompt
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+        },
+    }
+
+    url = (
+        "https://generativelanguage.googleapis.com/"
+        "v1beta/models/"
+        f"{model}:generateContent"
+        f"?key={api_key}"
+    )
+
+    data = json.dumps(
+        payload,
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+    req = request.Request(
+        url,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+
+        with request.urlopen(
+            req,
+            timeout=60,
+        ) as response:
+
+            raw = response.read().decode(
+                "utf-8"
+            )
+
+    except error.HTTPError as exc:
+
+        body = exc.read().decode(
+            "utf-8",
+            errors="replace",
+        )
+
+        raise RuntimeError(
+            f"Gemini API {exc.code}: {body}"
+        ) from exc
+
+    except Exception as exc:
+
+        raise RuntimeError(
+            f"Gemini request failed: {exc}"
+        ) from exc
+
+    result = json.loads(raw)
+
+    candidates = result.get(
+        "candidates",
+        [],
+    )
+
+    if not candidates:
+        raise RuntimeError(
+            "Gemini 沒有回傳 candidates"
+        )
+
+    parts = (
+        candidates[0]
+        .get("content", {})
+        .get("parts", [])
+    )
+
+    generated = ""
+
+    for part in parts:
+
+        if "text" in part:
+            generated += part["text"]
+
+    if not generated:
+        raise RuntimeError(
+            "Gemini 沒有回傳文字"
+        )
+
+    analysis = _extract_json(
+        generated
+    )
+
+    # 確保欄位存在
+    analysis.setdefault(
+        "score",
+        50,
+    )
+
+    analysis.setdefault(
+        "summary",
+        "",
+    )
+
+    analysis.setdefault(
+        "key_points",
+        [],
+    )
+
+    analysis.setdefault(
+        "mentioned_stocks",
+        [],
+    )
+
+    # 限制股票數量
+    analysis["mentioned_stocks"] = (
+        analysis["mentioned_stocks"][:8]
+    )
+
+    for stock in analysis[
+        "mentioned_stocks"
+    ]:
+
+        stock.setdefault(
+            "code",
+            "",
+        )
+
+        stock.setdefault(
+            "name",
+            "",
+        )
+
+        stock.setdefault(
+            "points",
+            [],
+        )
+
+        stock["points"] = stock[
+            "points"
+        ][:3]
+
+    return analysis
