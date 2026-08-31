@@ -1,38 +1,144 @@
 from __future__ import annotations
 
-def _clip(text: str, limit: int) -> str:
-    text = (text or "").strip()
-    return text if len(text) <= limit else text[:limit-1].rstrip() + "…"
 
-def format_message(video: dict, analysis: dict, channel_name: str = "", **_) -> str:
-    channel = channel_name or analysis.get("channel_name") or video.get("channel_name", "")
-    lines = [f"📺【{channel}】", "", f"🎬 {video.get('title', '未命名影片')}", "", "📌【重點個股】"]
-    stocks = analysis.get("stocks", [])
+def _safe(value) -> str:
+    if value is None:
+        return ""
 
-    if not stocks:
-        lines.append("影片中沒有明確強調的個股。")
+    return str(value).strip()
+
+
+def format_message(
+    video: dict,
+    analysis: dict,
+) -> str:
+
+    channel_name = _safe(
+        video.get(
+            "channel_name",
+            "YouTube",
+        )
+    )
+
+    title = _safe(
+        video.get(
+            "title",
+            "",
+        )
+    )
+
+    video_url = _safe(
+        video.get(
+            "url",
+            "",
+        )
+    )
+
+    lines = []
+
+    lines.append(
+        f"📺 {channel_name}"
+    )
+
+    lines.append("")
+
+    lines.append(
+        f"🎬 {title}"
+    )
+
+    lines.append("")
+
+    stocks = analysis.get(
+        "mentioned_stocks",
+        [],
+    )
+
+    if stocks:
+
+        lines.append(
+            "📈 影片強調個股"
+        )
+
+        lines.append("")
+
+        for stock in stocks:
+
+            code = _safe(
+                stock.get(
+                    "code",
+                    "",
+                )
+            )
+
+            name = _safe(
+                stock.get(
+                    "name",
+                    "",
+                )
+            )
+
+            if code:
+                lines.append(
+                    f"【{name}（{code}）】"
+                )
+            else:
+                lines.append(
+                    f"【{name}】"
+                )
+
+            points = stock.get(
+                "points",
+                [],
+            )
+
+            for point in points[:3]:
+
+                point = _safe(point)
+
+                if not point:
+                    continue
+
+                lines.append(
+                    f"• {point}"
+                )
+
+            lines.append("")
+
     else:
-        for s in stocks[:5]:
-            name, code = s.get("name", "").strip(), s.get("code", "").strip()
-            label = f"{name}（{code}）" if code else name
-            lines += ["", f"🔹 {label}"]
-            if s.get("development"):
-                lines.append(f"後續發展：{_clip(s['development'], 240)}")
-            if s.get("view"):
-                lines.append(f"影片觀點：{_clip(s['view'], 200)}")
 
-    lines += ["", "⚠️ 以上為影片內容整理，不代表投資建議。", "", "🔗 原影片", video.get("url", "")]
+        lines.append(
+            "📌 影片重點"
+        )
+
+        lines.append("")
+
+        points = analysis.get(
+            "key_points",
+            [],
+        )
+
+        for point in points[:5]:
+
+            point = _safe(point)
+
+            if point:
+                lines.append(
+                    f"• {point}"
+                )
+
+        lines.append("")
+
+    lines.append(
+        "⚠️ 以上為影片內容整理，"
+        "不代表投資建議。"
+    )
+
+    if video_url:
+
+        lines.append("")
+
+        lines.append(
+            f"🔗 原影片\n{video_url}"
+        )
+
     return "\n".join(lines)
-
-def split_message(message: str, limit: int = 3900) -> list[str]:
-    if len(message) <= limit:
-        return [message]
-    chunks, current = [], ""
-    for line in message.splitlines(True):
-        if len(current) + len(line) <= limit:
-            current += line
-        else:
-            if current: chunks.append(current.rstrip())
-            current = line
-    if current: chunks.append(current.rstrip())
-    return chunks
