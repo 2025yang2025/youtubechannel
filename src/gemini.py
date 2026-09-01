@@ -1,61 +1,292 @@
 from __future__ import annotations
-import json, re
-try:
-    from google import genai
-    from google.genai import types
-except ImportError:
-    genai = None
-    types = None
 
-def _json(text):
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", (text or "").strip(), flags=re.I)
-    try: return json.loads(text)
-    except Exception:
-        m = re.search(r"\{.*\}", text, re.S)
-        if not m: raise RuntimeError("Gemini 回傳不是有效 JSON")
-        return json.loads(m.group(0))
+import json
+import re
 
-def analyze_gemini(api_key, model, video, text, max_chars=50000, channel_name="", **_):
-    if not api_key: raise RuntimeError("GEMINI_API_KEY 未設定")
-    if genai is None: raise RuntimeError("請安裝 google-genai")
-    client = genai.Client(api_key=api_key)
-    prompt = f"""你是台股 YouTube 影片重點整理器。
-只列出影片中「明確被強調、討論或重點分析」的股票，最多5檔。
-每檔必須有中文名稱；能確認代號才填4碼。不要把日期、時間、網址誤認股票。
-不要只因 hashtag 出現就列入。不要自行預測股價，不要補充影片沒有說的資訊。
-development 只寫影片提到的後續發展、營收、訂單、需求、產品、產能、產業趨勢或公司展望。
-view 只寫影片對該股的主要觀點。
-沒有明確個股時 stocks 必須為空陣列。
-只回傳 JSON：
-{{"score":50,"summary":"一句話摘要","stocks":[{{"code":"2330","name":"台積電","development":"後續發展","view":"影片觀點"}}]}}
+from google import genai
 
-頻道：{channel_name}
-標題：{video.get("title","")}
-Description：
-{video.get("description","")}
-字幕/文字：
-{(text or "")[:max_chars]}"""
+from .rules import STOCK_MAP, FOREIGN_STOCKS
+
+
+def _extract_json(text: str) -> dict:
+
+    if not text:
+        raise ValueError(
+            "Gemini 沒有返回內容"
+        )
+
+    text = text.strip()
+
+    # 移除 markdown code block
+    text = re.sub(
+        r"^```json\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    text = re.sub(
+        r"^```\s*",
+        "",
+        text,
+    )
+
+    text = re.sub(
+        r"\s*```$",
+        "",
+        text,
+    )
+
+    text = text.strip()
+
+    try:
+        return json.loads(text)
+
+    except json.JSONDecodeError:
+
+        match = re.search(
+            r"\{.*\}",
+            text,
+            flags=re.DOTALL,
+        )
+
+        if not match:
+            raise ValueError(
+                "Gemini 回傳不是有效 JSON"
+            )
+
+        return json.loads(
+            match.group(0)
+        )
+
+
+def _normalize_assets(
+    assets,
+) -> list[str]:
+
+    if not isinstance(assets, list):
+        return []
+
+    result = []
+    seen = set()
+
+    for item in assets:
+
+        if isinstance(item, dict):
+
+            name = str(
+                item.get(
+                    "name",
+                    "",
+                )
+            ).strip()
+
+            code = str(
+                item.get(
+                    "code",
+                    "",
+                )
+            ).strip()
+
+        else:
+
+            name = str(item).strip()
+            code = ""
+
+        if not name:
+            continue
+
+        # -------------------------------------------------
+        # 如果 AI 沒提供代號，嘗試使用內建對照
+        # -------------------------------------------------
+
+        if not code:
+
+            if name in STOCK_MAP:
+
+                code = STOCK_MAP[name] or ""
+
+            elif name in FOREIGN_STOCKS:
+
+                code = FOREIGN_STOCKS[name] or ""
+
+        if code:
+
+            display = (
+                f"{name}（{code}）"
+            )
+
+        else:
+
+            display = name
+
+        if display in seen:
+            continue
+
+        seen.add(display)
+        result.append(display)
+
+    return result[:15]
+
+
+def analyze_gemini(
+    api_key: str,
+    model: str,
+    video: dict,
+    text: str,
+    max_chars: int = 50000,
+) -> dict:
+
+    if not api_key:
+        raise RuntimeError(
+            "GEMINI_API_KEY 未設定"
+        )
+
+    if not text or len(text.strip()) < 20:
+
+        raise RuntimeError(
+            "影片內容太短，無法進行分析"
+        )
+
+    client = genai.Client(
+        api_key=api_key
+    )
+
+    content = text[:max_chars]
+
+    title = video.get(
+        "title",
+        "",
+    )
+
+    prompt = f"""
+你是一個台灣股市影片摘要助手。
+
+你的任務不是預測股價，也不是提供投資建議。
+
+請嚴格根據「影片文字內容」整理影片。
+
+影片標題：
+{title}
+
+影片內容：
+{content}
+
+請完成兩件事情：
+
+1. 找出影片真正談到的 3～5 個重要重點。
+2. 找出影片內容「實際提及」的公司、股票或產業。
+
+非常重要：
+
+- 不可以只把影片標題改寫成重點。
+- 如果影片內容沒有支持某個結論，不可以自行推測。
+- 不可以把影片 Description 的宣傳文案當成影片重點。
+- 不要加入自己的投資判斷。
+- 不要產生「後續發展」。
+- 不要產生風險分析。
+- 不要產生評分。
+- 不要產生分類。
+- 不要產生 Hashtag。
+- 不要產生網址。
+- 公司如果有股票代號，請提供股票代號。
+- 如果只有公司名稱而無法確認股票代號，就只保留公司名稱。
+- 絕對不要猜股票代號。
+- 台股格式：台積電（2330）
+- 美股格式：輝達（NVDA）
+- 如果內容只是提到公司名稱，也可以只寫公司名稱。
+
+請只返回 JSON：
+
+{{
+  "key_points": [
+    "重點1",
+    "重點2",
+    "重點3"
+  ],
+  "mentioned_assets": [
+    {{
+      "name": "公司名稱",
+      "code": "股票代號，無法確認則留空"
+    }}
+  ]
+}}
+"""
+
     response = client.models.generate_content(
-        model=model, contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.1, max_output_tokens=1800,
-            response_mime_type="application/json"
+        model=model,
+        contents=prompt,
+    )
+
+    raw = getattr(
+        response,
+        "text",
+        None,
+    )
+
+    if not raw:
+
+        raise RuntimeError(
+            "Gemini 沒有返回分析結果"
+        )
+
+    data = _extract_json(
+        raw
+    )
+
+    points = data.get(
+        "key_points",
+        [],
+    )
+
+    if not isinstance(points, list):
+        points = []
+
+    cleaned_points = []
+
+    for point in points:
+
+        point = str(point).strip()
+
+        if len(point) < 8:
+            continue
+
+        # 避免 AI 再次只輸出標題
+        if title:
+
+            title_clean = re.sub(
+                r"\s+",
+                "",
+                title,
+            )
+
+            point_clean = re.sub(
+                r"\s+",
+                "",
+                point,
+            )
+
+            if point_clean == title_clean:
+                continue
+
+        cleaned_points.append(
+            point
+        )
+
+    assets = _normalize_assets(
+        data.get(
+            "mentioned_assets",
+            [],
         )
     )
-    raw = getattr(response, "text", None)
-    if not raw: raise RuntimeError("Gemini 沒有回傳文字")
-    data = _json(raw)
-    stocks = []
-    seen = set()
-    for s in data.get("stocks", []):
-        if not isinstance(s, dict): continue
-        name = str(s.get("name","")).strip()
-        code = str(s.get("code","")).strip()
-        if not name or (code,name) in seen: continue
-        seen.add((code,name))
-        stocks.append({"code":code,"name":name,
-                       "development":str(s.get("development","")).strip()[:260],
-                       "view":str(s.get("view","")).strip()[:220]})
-    return {"score":max(0,min(100,int(data.get("score",50) or 50))),
-            "channel_name":channel_name,"stocks":stocks[:5],
-            "summary":str(data.get("summary","")).strip()[:300],"source":"gemini"}
+
+    if not cleaned_points:
+
+        raise RuntimeError(
+            "Gemini 沒有產生有效影片重點"
+        )
+
+    return {
+        "key_points": cleaned_points[:5],
+        "mentioned_assets": assets,
+    }
