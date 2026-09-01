@@ -3,138 +3,141 @@ from __future__ import annotations
 import re
 
 
-STOCK_NAMES = {
-    "2330": "台積電",
-    "2303": "聯電",
-    "2454": "聯發科",
-    "2317": "鴻海",
-    "2382": "廣達",
-    "6669": "緯穎",
-    "2308": "台達電",
-    "3711": "日月光投控",
-    "3231": "緯創",
-    "2357": "華碩",
-    "2376": "技嘉",
-    "3037": "欣興",
-    "3044": "健鼎",
-    "2344": "華邦電",
-    "2408": "南亞科",
-    "8299": "群聯",
-    "3006": "晶豪科",
-    "6239": "力成",
-    "6770": "力積電",
-    "3715": "定穎投控",
-    "3017": "奇鋐",
-    "3324": "雙鴻",
-    "3661": "世芯-KY",
-    "3443": "創意",
-    "3665": "貿聯-KY",
-    "3034": "聯詠",
-    "3035": "智原",
-    "2379": "瑞昱",
-    "3529": "力旺",
-    "5274": "信驊",
-    "6669": "緯穎",
-    "2383": "台光電",
-    "8046": "南電",
-    "3533": "嘉澤",
-    "2059": "川湖",
-    "6415": "矽力*-KY",
-    "2353": "宏碁",
-    "2356": "英業達",
-    "2324": "仁寶",
-    "3036": "文曄",
-    "2301": "光寶科",
-    "2377": "微星",
-    "2376": "技嘉",
+# ---------------------------------------------------------
+# 股票 / 公司名稱對照
+# ---------------------------------------------------------
+
+STOCK_MAP = {
+    "台積電": "2330",
+    "聯電": "2303",
+    "聯發科": "2454",
+    "鴻海": "2317",
+    "廣達": "2382",
+    "緯穎": "6669",
+    "台達電": "2308",
+    "日月光投控": "3711",
+    "日月光": "3711",
+    "南亞": "1303",
+    "南亞科": "2408",
+    "華邦電": "2344",
+    "旺宏": "2337",
+    "力積電": "6770",
+    "群聯": "8299",
+    "威剛": "3260",
+    "創見": "2451",
+    "國巨": "2327",
+    "華新科": "2492",
+    "南電": "8046",
+    "欣興": "3037",
+    "景碩": "3189",
+    "川湖": "2059",
+    "上銀": "2049",
+    "宏致": "3605",
+    "亞通": "6179",
+    "聯詠": "3034",
+    "瑞昱": "2379",
+    "世芯-KY": "3661",
+    "祥碩": "5269",
+    "信驊": "5274",
+    "奇鋐": "3017",
+    "雙鴻": "3324",
+    "健策": "3653",
+    "台光電": "2383",
+    "金像電": "2368",
+    "智邦": "2345",
+    "英業達": "2356",
+    "緯創": "3231",
+    "技嘉": "2376",
+    "微星": "2377",
+    "華碩": "2357",
+    "大立光": "3008",
+    "鴻準": "2354",
+    "台塑": "1301",
+    "台化": "1326",
+    "台玻": "1802",
+    "中鋼": "2002",
 }
 
 
-NAME_ALIASES = {
-    "台積": "台積電",
-    "TSMC": "台積電",
-    "TSM": "台積電",
-    "NVIDIA": "輝達",
-    "Nvidia": "輝達",
-    "AMD": "超微",
-    "Intel": "英特爾",
-    "聯發": "聯發科",
-    "南亞科": "南亞科",
-    "華邦": "華邦電",
+FOREIGN_STOCKS = {
+    "輝達": "NVDA",
+    "NVIDIA": "NVDA",
+    "超微": "AMD",
+    "AMD": "AMD",
+    "英特爾": "INTC",
+    "Intel": "INTC",
+    "美光": "MU",
+    "Micron": "MU",
+    "博通": "AVGO",
+    "Broadcom": "AVGO",
+    "高通": "QCOM",
+    "Qualcomm": "QCOM",
+    "台積電": "2330",
+    "海力士": None,
+    "SK海力士": None,
 }
 
 
-IMPORTANT_WORDS = [
-    "營收",
-    "獲利",
-    "EPS",
-    "毛利",
-    "毛利率",
-    "訂單",
-    "接單",
-    "需求",
-    "展望",
-    "成長",
-    "下滑",
-    "增加",
-    "減少",
-    "突破",
-    "轉強",
-    "轉弱",
-    "上漲",
-    "下跌",
-    "利多",
-    "利空",
-    "題材",
-    "漲價",
-    "降價",
-    "擴產",
-    "產能",
-    "庫存",
-    "AI",
-    "HBM",
-    "CoWoS",
-    "先進製程",
-    "法說",
-    "財報",
-    "本益比",
-    "殖利率",
+# ---------------------------------------------------------
+# 雜訊
+# ---------------------------------------------------------
+
+NOISE_PATTERNS = [
+    r"https?://\S+",
+    r"www\.\S+",
+    r"#\S+",
+    r"加入.*?家族",
+    r"訂閱.*?",
+    r"按讚.*?",
+    r"記得.*?訂閱",
+    r"歡迎.*?訂閱",
+    r"點擊.*?",
+    r"點↓↓↓.*",
 ]
 
 
-def _clean_text(text: str) -> str:
+def clean_text(text: str) -> str:
+    """清除影片 Description 常見宣傳雜訊。"""
+
     if not text:
         return ""
 
-    text = re.sub(
-        r"https?://\S+",
-        "",
-        text,
-    )
+    result = text
 
-    text = re.sub(
-        r"www\.\S+",
-        "",
-        text,
-    )
+    for pattern in NOISE_PATTERNS:
+        result = re.sub(
+            pattern,
+            " ",
+            result,
+            flags=re.IGNORECASE,
+        )
 
-    text = re.sub(
-        r"#[^\s#]+",
-        "",
-        text,
-    )
-
-    text = re.sub(
-        r"\s+",
+    # 清除多餘空白
+    result = re.sub(
+        r"[ \t]+",
         " ",
-        text,
+        result,
     )
 
-    return text.strip()
+    result = re.sub(
+        r"\n{3,}",
+        "\n\n",
+        result,
+    )
 
+    return result.strip()
+
+
+# ---------------------------------------------------------
+# 句子
+# ---------------------------------------------------------
 
 def _sentences(text: str) -> list[str]:
-    text = _clean_text(text)
+
+    text = clean_text(text)
+
+    if not text:
+        return []
 
     raw = re.split(
         r"[。！？!?；;\n]",
@@ -144,409 +147,362 @@ def _sentences(text: str) -> list[str]:
     result = []
 
     for item in raw:
-        item = item.strip()
 
-        if len(item) < 8:
+        sentence = item.strip()
+
+        if len(sentence) < 10:
             continue
 
-        result.append(item)
+        # 太像標籤 / hashtag 的內容不要
+        if sentence.count("#") >= 2:
+            continue
+
+        result.append(sentence)
 
     return result
 
 
-def _find_stock_mentions(
-    text: str,
-) -> list[dict]:
+# ---------------------------------------------------------
+# 股票名稱
+# ---------------------------------------------------------
 
-    found = []
+def _extract_assets(text: str) -> list[str]:
 
-    # 股票代號
-    for code in re.findall(
-        r"(?<!\d)(\d{4})(?!\d)",
-        text,
-    ):
-        if code in STOCK_NAMES:
-            found.append(
-                {
-                    "code": code,
-                    "name": STOCK_NAMES[code],
-                }
-            )
-
-    # 公司名稱
-    for name in set(
-        STOCK_NAMES.values()
-    ):
-        if name in text:
-            code = next(
-                (
-                    k
-                    for k, v
-                    in STOCK_NAMES.items()
-                    if v == name
-                ),
-                "",
-            )
-
-            found.append(
-                {
-                    "code": code,
-                    "name": name,
-                }
-            )
-
-    # 別名
-    for alias, name in NAME_ALIASES.items():
-        if alias.lower() in text.lower():
-            code = next(
-                (
-                    k
-                    for k, v
-                    in STOCK_NAMES.items()
-                    if v == name
-                ),
-                "",
-            )
-
-            found.append(
-                {
-                    "code": code,
-                    "name": name,
-                }
-            )
+    if not text:
+        return []
 
     result = []
     seen = set()
 
-    for item in found:
-        key = (
-            item["code"],
-            item["name"],
-        )
+    # -----------------------------
+    # 台股公司
+    # -----------------------------
 
-        if key in seen:
+    for name, code in STOCK_MAP.items():
+
+        if name not in text:
             continue
 
-        seen.add(key)
-        result.append(item)
+        display = (
+            f"{name}（{code}）"
+            if code
+            else name
+        )
 
-    return result[:12]
+        if display not in seen:
+
+            seen.add(display)
+            result.append(display)
+
+    # -----------------------------
+    # 美股 / 外國公司
+    # -----------------------------
+
+    for name, code in FOREIGN_STOCKS.items():
+
+        if name not in text:
+            continue
+
+        display = (
+            f"{name}（{code}）"
+            if code
+            else name
+        )
+
+        if display not in seen:
+
+            seen.add(display)
+            result.append(display)
+
+    # -----------------------------
+    # 從文字找四位數股票代號
+    # -----------------------------
+
+    codes = re.findall(
+        r"(?<!\d)(\d{4})(?!\d)",
+        text,
+    )
+
+    for code in codes:
+
+        # 避免把年份、時間當股票
+        number = int(code)
+
+        if 1900 <= number <= 2100:
+            continue
+
+        if code in {"0000", "1111", "2222"}:
+            continue
+
+        # 如果沒有名稱，不直接亂配
+        # 只有在對照表中才顯示
+        for name, mapped_code in STOCK_MAP.items():
+
+            if mapped_code == code:
+
+                display = f"{name}（{code}）"
+
+                if display not in seen:
+                    seen.add(display)
+                    result.append(display)
+
+                break
+
+    return result[:15]
 
 
-def _stock_points(
-    text: str,
-    stock: dict,
-) -> list[str]:
+# ---------------------------------------------------------
+# 判斷一句話是不是有內容
+# ---------------------------------------------------------
 
-    name = stock["name"]
-    code = stock["code"]
+IMPORTANT_WORDS = [
+    "營收",
+    "獲利",
+    "EPS",
+    "毛利",
+    "訂單",
+    "接單",
+    "需求",
+    "產能",
+    "擴產",
+    "財報",
+    "法說",
+    "展望",
+    "成長",
+    "衰退",
+    "價格",
+    "漲價",
+    "跌價",
+    "突破",
+    "轉強",
+    "轉弱",
+    "法人",
+    "外資",
+    "投信",
+    "主力",
+    "買超",
+    "賣超",
+    "資金",
+    "AI",
+    "伺服器",
+    "半導體",
+    "記憶體",
+    "封裝",
+    "晶圓",
+    "先進製程",
+    "機器人",
+    "能源",
+    "綠能",
+    "電動車",
+]
 
-    keywords = [
-        name,
-    ]
 
-    if code:
-        keywords.append(code)
+def _sentence_score(
+    sentence: str,
+    keywords: list[str],
+) -> int:
 
-    sentences = _sentences(text)
+    score = 0
 
-    scored = []
+    lower = sentence.lower()
+
+    # 重要關鍵詞
+    for word in IMPORTANT_WORDS:
+
+        if word.lower() in lower:
+            score += 3
+
+    # 使用者指定關鍵字
+    for word in keywords:
+
+        if word and word.lower() in lower:
+            score += 2
+
+    # 公司名稱
+    for name in STOCK_MAP:
+
+        if name in sentence:
+            score += 4
+
+    for name in FOREIGN_STOCKS:
+
+        if name in sentence:
+            score += 4
+
+    # 數字
+    if re.search(r"\d+", sentence):
+        score += 1
+
+    # 百分比
+    if "%" in sentence:
+        score += 2
+
+    return score
+
+
+# ---------------------------------------------------------
+# Rules 分析
+# ---------------------------------------------------------
+
+def analyze_rules(
+    title: str = "",
+    description: str = "",
+    transcript: str = "",
+    keywords: list[str] | None = None,
+    text: str | None = None,
+    channel=None,
+    video=None,
+) -> dict:
+
+    keywords = keywords or []
+
+    # -----------------------------------------------------
+    # 相容舊版 main.py
+    # -----------------------------------------------------
+
+    if text:
+        source_text = text
+
+    else:
+        source_text = "\n".join(
+            [
+                title or "",
+                description or "",
+                transcript or "",
+            ]
+        )
+
+    source_text = clean_text(source_text)
+
+    sentences = _sentences(source_text)
+
+    # -----------------------------------------------------
+    # 如果沒有內容
+    # -----------------------------------------------------
+
+    if not sentences:
+
+        return {
+            "summary": "目前沒有取得足夠的影片文字內容。",
+            "key_points": [],
+            "mentioned_assets": [],
+        }
+
+    # -----------------------------------------------------
+    # 排序重要句子
+    # -----------------------------------------------------
+
+    ranked = []
 
     for sentence in sentences:
 
-        if not any(
-            key.lower()
-            in sentence.lower()
-            for key in keywords
-        ):
-            continue
-
-        score = 5
-
-        for word in IMPORTANT_WORDS:
-            if word.lower() in sentence.lower():
-                score += 2
-
-        if re.search(
-            r"\d+(?:\.\d+)?%",
+        score = _sentence_score(
             sentence,
-        ):
-            score += 3
+            keywords,
+        )
 
-        if re.search(
-            r"\d{2,}",
-            sentence,
-        ):
-            score += 1
-
-        scored.append(
+        ranked.append(
             (
                 score,
                 sentence,
             )
         )
 
-    scored.sort(
-        key=lambda x: x[0],
+    ranked.sort(
+        key=lambda item: item[0],
         reverse=True,
     )
 
-    result = []
-    seen = set()
-
-    for _, sentence in scored:
-        sentence = sentence.strip()
-
-        if sentence in seen:
-            continue
-
-        seen.add(sentence)
-        result.append(sentence[:180])
-
-        if len(result) >= 3:
-            break
-
-    return result
-
-
-def _category(text: str) -> str:
-
-    categories = {
-        "台股": [
-            "台股",
-            "加權",
-            "櫃買",
-            "上市",
-            "上櫃",
-        ],
-        "AI": [
-            "AI",
-            "人工智慧",
-            "GPU",
-            "伺服器",
-        ],
-        "半導體": [
-            "半導體",
-            "晶圓",
-            "先進製程",
-            "封裝",
-            "HBM",
-        ],
-        "記憶體": [
-            "記憶體",
-            "DRAM",
-            "NAND",
-            "HBM",
-        ],
-        "總經": [
-            "FED",
-            "聯準會",
-            "降息",
-            "升息",
-            "CPI",
-            "GDP",
-        ],
-    }
-
-    scores = {}
-
-    for category, words in categories.items():
-        scores[category] = sum(
-            text.lower().count(
-                word.lower()
-            )
-            for word in words
-        )
-
-    best = max(
-        scores,
-        key=scores.get,
-    )
-
-    if scores[best] <= 0:
-        return "其他"
-
-    return best
-
-
-def _score(
-    text: str,
-    keywords: list[str],
-) -> int:
-
-    score = 30
-
-    for word in IMPORTANT_WORDS:
-        if word.lower() in text.lower():
-            score += 3
-
-    for word in keywords:
-        if word.lower() in text.lower():
-            score += 2
-
-    stocks = _find_stock_mentions(text)
-
-    score += min(
-        len(stocks) * 4,
-        20,
-    )
-
-    if "%" in text:
-        score += 5
-
-    return max(
-        0,
-        min(
-            100,
-            score,
-        ),
-    )
-
-
-def analyze_rules(
-    title: str,
-    description: str,
-    transcript: str,
-    keywords: list[str],
-) -> dict:
-
-    text = "\n".join(
-        [
-            title or "",
-            description or "",
-            transcript or "",
-        ]
-    )
-
-    text = _clean_text(text)
-
-    stocks = _find_stock_mentions(
-        text
-    )
-
-    stock_analysis = []
-
-    for stock in stocks:
-
-        points = _stock_points(
-            text,
-            stock,
-        )
-
-        if not points:
-            continue
-
-        stock_analysis.append(
-            {
-                "code": stock["code"],
-                "name": stock["name"],
-                "points": points,
-            }
-        )
-
-    # 如果找不到已知股票，
-    # 再找影片中可能的四位數代號
-    if not stocks:
-
-        codes = re.findall(
-            r"(?<!\d)(\d{4})(?!\d)",
-            text,
-        )
-
-        seen_codes = set()
-
-        for code in codes:
-
-            if code in seen_codes:
-                continue
-
-            seen_codes.add(code)
-
-            stock_analysis.append(
-                {
-                    "code": code,
-                    "name": f"股票 {code}",
-                    "points": [
-                        "影片中提及此股票代號，但目前無法確認公司名稱。"
-                    ],
-                }
-            )
-
-            if len(stock_analysis) >= 8:
-                break
+    # -----------------------------------------------------
+    # 去除太相似內容
+    # -----------------------------------------------------
 
     key_points = []
+    seen_words = []
 
-    sentences = _sentences(text)
+    for score, sentence in ranked:
 
-    ranked = []
+        if score <= 0:
+            continue
 
-    for sentence in sentences:
+        # 避免太短
+        if len(sentence) < 15:
+            continue
 
-        score = 0
+        # 避免標題本身
+        if title:
 
-        for word in IMPORTANT_WORDS:
-            if word.lower() in sentence.lower():
-                score += 2
+            title_clean = clean_text(title)
 
-        if "%" in sentence:
-            score += 3
+            if sentence.strip() == title_clean.strip():
+                continue
 
-        if re.search(
-            r"\d{2,}",
-            sentence,
-        ):
-            score += 1
+        # 避免重複句
+        duplicate = False
 
-        if any(
-            stock["name"] in sentence
-            or (
-                stock["code"]
-                and stock["code"] in sentence
+        current_words = set(
+            re.findall(
+                r"[\u4e00-\u9fffA-Za-z0-9]+",
+                sentence,
             )
-            for stock in stocks
-        ):
-            score += 5
+        )
 
-        if score > 0:
-            ranked.append(
-                (
-                    score,
-                    sentence,
+        for previous in seen_words:
+
+            if not current_words:
+                continue
+
+            overlap = (
+                len(current_words & previous)
+                / max(
+                    1,
+                    len(current_words),
                 )
             )
 
-    ranked.sort(
-        key=lambda x: x[0],
-        reverse=True,
-    )
+            if overlap >= 0.75:
 
-    seen = set()
+                duplicate = True
+                break
 
-    for _, sentence in ranked:
-
-        if sentence in seen:
+        if duplicate:
             continue
 
-        seen.add(sentence)
-        key_points.append(
-            sentence[:180]
-        )
+        key_points.append(sentence)
+        seen_words.append(current_words)
 
         if len(key_points) >= 5:
             break
 
+    # -----------------------------------------------------
+    # 如果沒有找到有效句子
+    # -----------------------------------------------------
+
+    if not key_points:
+
+        # 不再把標題當成影片重點
+        key_points = [
+            sentence
+            for sentence in sentences[:3]
+            if sentence != title
+        ]
+
+    # -----------------------------------------------------
+    # 個股
+    # -----------------------------------------------------
+
+    assets = _extract_assets(
+        source_text
+    )
+
     return {
-        "score": _score(
-            text,
-            keywords,
-        ),
-        "category": _category(text),
         "summary": (
-            key_points[0]
+            key_points[0][:220]
             if key_points
-            else title[:180]
+            else "目前沒有足夠內容可整理。"
         ),
-        "key_points": key_points,
-        "mentioned_stocks": stock_analysis,
+
+        "key_points": key_points[:5],
+
+        "mentioned_assets": assets,
     }
