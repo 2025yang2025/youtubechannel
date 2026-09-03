@@ -3,10 +3,10 @@ free_mode:
   fallback_to_rules: true
 ai:
   # 穩定、成本效益較佳；可在 GitHub Variables/Secrets 用 GEMINI_MODEL 覆蓋
-  default_gemini_model: "gemini-3.6-flash"
+  default_gemini_model: "gemini-3.7-flash"
   fallback_models:
-    - "gemini-3.5-flash-lite"
-    - "gemini-3.7-flash"
+    - "gemini-3.6-flash"
+    - "gemini-3.5-flash"
   max_transcript_chars: 45000
   max_output_tokens: 900
 monitor:
@@ -20,3 +20,8 @@ transcript:
   minimum_useful_chars: 80
 telegram:
   max_message_chars: 3900
+
+# 字幕被 YouTube 阻擋時，直接把公開 YouTube 影片 URL 交給 Gemini 做影片理解。
+# Gemini 官方目前提供此功能的預覽方案；是否可用仍受帳號/模型/地區與配額限制。
+gemini_youtube:
+  enabled: true

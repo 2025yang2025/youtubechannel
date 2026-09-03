@@ -1,25 +1,25 @@
 channels:
   - name: "關我什麼事"
     handle: "@關我什麼事"
-    channel_id: ""
+    channel_id: "UCMpuxj_U02VaHfaPD5Jjx_Q"
     enabled: true
     min_score: 0
-    keywords: ["台股", "股票", "投資", "產業", "台積電", "AI"]
+    keywords: ["台股", "股票", "投資", "ETF", "產業", "台積電", "AI"]
   - name: "鈔錢部署"
     handle: "@鈔前部署"
-    channel_id: ""
+    channel_id: "UCYeChLc27pFzYNCxTorOrLA"
     enabled: true
     min_score: 0
-    keywords: ["台股", "股票", "投資", "產業", "台積電", "AI"]
+    keywords: ["台股", "股票", "投資", "ETF", "產業", "個股", "AI"]
   - name: "Catch大錢潮"
     handle: "@Catch大錢潮"
-    channel_id: ""
+    channel_id: "UCwIdAI4fCV4lisP3TZzOGuw"
     enabled: true
     min_score: 0
-    keywords: ["台股", "股票", "投資", "產業", "台積電", "AI"]
+    keywords: ["台股", "股票", "投資", "總經", "產業", "關稅", "美股"]
   - name: "MoneyDJ理財網"
     handle: "@MoneydjTV"
-    channel_id: ""
+    channel_id: "UC8qLLXh5cuY_jtvOHsSYmTA"
     enabled: true
     min_score: 0
-    keywords: ["台股", "股票", "投資", "產業", "台積電", "AI"]
+    keywords: ["台股", "股票", "投資", "產業", "公司", "科技"]
