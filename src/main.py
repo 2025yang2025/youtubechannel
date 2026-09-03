@@ -17,21 +17,25 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(
 
 def _models(settings: dict) -> list[str]:
     ai = settings.get("ai", {}) or {}
-    preferred = get_env("GEMINI_MODEL", ai.get("default_gemini_model", "gemini-3.6-flash"))
+    preferred = get_env("GEMINI_MODEL", ai.get("default_gemini_model", "gemini-3.7-flash"))
+    # Ignore old model names left in an existing GitHub Secret.
+    retired = {"gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite"}
+    if preferred in retired:
+        preferred = str(ai.get("default_gemini_model", "gemini-3.7-flash"))
     fallbacks = [str(x).strip() for x in ai.get("fallback_models", []) if str(x).strip()]
     result: list[str] = []
     for model in [preferred, *fallbacks]:
         if model and model not in result:
             result.append(model)
-    return result or ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.7-flash"]
+    return result or ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"]
 
 
-def _try_gemini(api_key: str, models: list[str], video: dict, text: str, max_chars: int, max_tokens: int):
+def _try_gemini(api_key: str, models: list[str], video: dict, text: str, max_chars: int, max_tokens: int, use_youtube_url: bool):
     last_error: Exception | None = None
     for model in models:
         try:
             logging.info("Gemini model: %s", model)
-            return analyze_gemini(api_key, model, video, text, max_chars, max_tokens), model
+            return analyze_gemini(api_key, model, video, text, max_chars, max_tokens, use_youtube_url), model
         except Exception as exc:
             last_error = exc
             logging.warning("Gemini model failed [%s]: %s", model, str(exc).splitlines()[0][:250])
@@ -54,6 +58,7 @@ def main() -> int:
     fallback_description = bool(settings.get("transcript", {}).get("fallback_to_description", True))
     use_gemini = bool(settings.get("free_mode", {}).get("use_gemini_if_available", True))
     use_rules = bool(settings.get("free_mode", {}).get("fallback_to_rules", True))
+    gemini_youtube = bool(settings.get("gemini_youtube", {}).get("enabled", True))
     state = load_state()
     sent = 0
 
@@ -83,18 +88,17 @@ def main() -> int:
 
             logging.info("Processing video: %s", video.get("title", ""))
             text, source = get_transcript(video_id, languages)
+            description = str(video.get("description", "") or "").strip()
 
-            if not usable_text(text, minimum) and fallback_description:
-                description = video.get("description", "")
-                if usable_text(description, minimum):
-                    text, source = description, "description"
-                    logging.info("使用影片 Description 作為分析文字: %s", video_id)
-                else:
-                    logging.warning("字幕/Description 都不足，跳過：%s", video_id)
-                    if not test_mode:
-                        mark_processed(state, video_id, "insufficient_text")
-                        save_state(state)
-                    continue
+            # YouTube Transcript API 在 GitHub Actions 常被 YouTube 擋住。
+            # 不再因為沒有字幕而直接跳過；如果啟用 Gemini YouTube URL，
+            # 讓 Gemini 直接讀取公開影片的音訊/畫面內容。
+            if not usable_text(text, minimum) and fallback_description and usable_text(description, minimum):
+                text, source = description, "description"
+                logging.info("字幕不可用，改用影片 Description 作為文字輔助: %s", video_id)
+
+            if not usable_text(text, minimum):
+                logging.warning("字幕/Description 不足，將嘗試 Gemini 直接分析 YouTube 影片：%s", video_id)
 
             analysis = None
             analysis_source = ""
@@ -108,12 +112,13 @@ def main() -> int:
                         text,
                         int(settings.get("ai", {}).get("max_transcript_chars", 45000)),
                         int(settings.get("ai", {}).get("max_output_tokens", 900)),
+                        gemini_youtube,
                     )
                     analysis_source = f"gemini:{used_model}"
                 except Exception:
                     logging.exception("Gemini 分析失敗，嘗試回退規則模式: %s", video_id)
 
-            if analysis is None and use_rules:
+            if analysis is None and use_rules and usable_text(text, minimum):
                 try:
                     analysis = analyze_rules(
                         video.get("title", ""),

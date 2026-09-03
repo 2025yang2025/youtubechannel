@@ -11,11 +11,11 @@ from google.genai import types
 
 SYSTEM_INSTRUCTION = r"""
 你是台灣財經影片內容整理助手。
-你的工作只有一件事：從「影片實際文字內容」中，整理真正有資訊量的重點。
+你的工作只有一件事：從「影片實際內容（影片本身、音訊/語音、字幕或文字）」中，整理真正有資訊量的重點。
 
 【非常重要】
 1. 絕對不能把影片標題改寫後當成影片重點。
-2. 如果輸入只有標題、短句、網址、標籤或宣傳文案，請回傳空的 key_points，不要猜測。
+2. 如果只有標題、短句、網址、標籤或宣傳文案，不能把它們當成影片內容；若同時提供 YouTube 影片本身，請直接依影片內容分析。若連影片本身也無法取得，才回傳空的 key_points。
 3. 只整理輸入文字中「有明確內容」的陳述，例如：公司營收、獲利、訂單、產能、需求、價格、產業趨勢、法人動向、財報、政策影響、個股表現與主持人/來賓明確提出的觀點。
 4. 不要自行補充輸入沒有提到的資料。
 5. 不要提供投資建議、買賣建議或自行推測未來價格。
@@ -128,31 +128,77 @@ def analyze_gemini(
     text: str,
     max_chars: int = 45000,
     max_output_tokens: int = 900,
+    use_youtube_url: bool = True,
 ) -> dict:
+    """Analyze a YouTube video with Gemini.
+
+    When enabled, the public YouTube URL is supplied as a real video input so
+    Gemini can understand the video's audio/visual content even when
+    youtube-transcript-api is blocked on GitHub Actions.
+    """
     text = (text or "").strip()
     title = str(video.get("title", "")).strip()
+    description = str(video.get("description", "") or "").strip()
+    video_id = str(video.get("video_id", "")).strip()
+    video_url = str(video.get("url", "") or "").strip()
+    if not video_url and video_id:
+        video_url = f"https://www.youtube.com/watch?v={video_id}"
 
-    if len(re.sub(r"\s+", "", text)) < 80:
-        raise RuntimeError("影片內容太短，無法進行可靠分析")
+    has_text = len(re.sub(r"\s+", "", text)) >= 80
 
-    # 明確告訴模型標題只是辨識資訊，不可拿來當摘要。
-    prompt = f"""
+    client = genai.Client(api_key=api_key)
+
+    if use_youtube_url and video_url:
+        prompt = f"""
 頻道：{video.get('channel_name', '')}
 影片標題（僅供辨識，禁止直接改寫成重點）：{title}
 
-以下是可用的影片實際文字內容：
+請直接理解這支公開 YouTube 影片本身的內容，尤其是主持人/來賓實際說了什麼。
+你可以參考下面的影片 Description 或字幕文字，但它們只是輔助資料，不能取代影片本身：
+
+【影片 Description】
+{description[:12000]}
+
+【可取得的字幕/文字】
+{text[:max_chars] if has_text else '(目前沒有可用字幕文字)'}
+
+請整理「影片真正談到的內容」，不要只重述標題。
+每個重點都必須能從影片內容或上述輔助文字得到支持。
+優先抓：
+1. 被主持人/來賓明確強調的公司、個股、ETF或產業
+2. 為什麼被提到、發生了什麼事情
+3. 營收、獲利、訂單、需求、價格、政策、法人動向等具體資訊
+4. 明確的市場判斷或觀點，但不要自行延伸成投資建議
+
+如果影片內容無法取得或沒有足夠實質資訊，key_points 才回傳空陣列。
+"""
+        contents = types.Content(
+            parts=[
+                types.Part(file_data=types.FileData(file_uri=video_url)),
+                types.Part(text=prompt),
+            ]
+        )
+        mode = "youtube_video"
+    else:
+        if not has_text:
+            raise RuntimeError("影片沒有足夠文字內容，且未啟用 YouTube URL 影片分析")
+        prompt = f"""
+頻道：{video.get('channel_name', '')}
+影片標題（僅供辨識，禁止直接改寫成重點）：{title}
+
+以下是影片實際文字內容：
 ---
 {text[:max_chars]}
 ---
 
-請只根據上述文字內容整理重點。
-如果上述內容不足以支持至少一個實質重點，key_points 請回傳空陣列。
+只根據上述實際內容整理重點，不要把標題改寫後當成重點。
 """
+        contents = prompt
+        mode = "text"
 
-    client = genai.Client(api_key=api_key)
     response = client.models.generate_content(
         model=model,
-        contents=prompt,
+        contents=contents,
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_INSTRUCTION,
             temperature=0.1,
@@ -163,12 +209,15 @@ def analyze_gemini(
 
     raw = _clean_json_text(getattr(response, "text", ""))
     data = json.loads(raw)
-
     points = _normalise_points(data.get("key_points", []))
     assets = _normalise_assets(data.get("mentioned_assets", []))
 
     if not points:
         raise RuntimeError("Gemini 未找到足夠的實質影片重點")
 
-    logging.info("Gemini analysis complete: %s | points=%s | assets=%s", video.get("video_id", ""), len(points), len(assets))
+    logging.info(
+        "Gemini analysis complete: %s | mode=%s | points=%s | assets=%s",
+        video_id, mode, len(points), len(assets)
+    )
     return {"key_points": points, "mentioned_assets": assets}
+

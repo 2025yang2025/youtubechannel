@@ -154,6 +154,7 @@ def get_latest_videos(api_key: str, channel, max_videos: int = 1) -> list[dict]:
                 "title": str(snippet.get("title", "")).strip(),
                 "description": str(snippet.get("description", "")).strip(),
                 "published_at": str(snippet.get("publishedAt", "")).strip(),
+                "url": f"https://www.youtube.com/watch?v={video_id}",
             }
         )
 
