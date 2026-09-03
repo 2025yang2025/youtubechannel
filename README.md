@@ -1,128 +1,13 @@
-# YouTube AI → Telegram V2（免費優先）
+# YouTube → Gemini → Telegram
 
-目標：
+免費優先的 YouTube 頻道摘要測試版。
 
-盡可能使用免費資源，
-自動監控 YouTube 頻道、
-取得字幕、
-分析重點，
-再推送到 Telegram。
+目前四個頻道：關我什麼事、鈔錢部署、Catch大錢潮、MoneyDJ理財網。
 
+Telegram 只顯示「影片重點」與「提及個股 / 公司」，不顯示原影片連結、評分、分類、評分理由、後續發展或大量關鍵字。
 
-## 免費優先架構
+Gemini 改用目前 Google GenAI Python SDK。若 Gemini 失敗，自動回退 Rules。
 
-1. GitHub Actions
-2. YouTube Data API
-3. youtube-transcript-api
-4. Gemini（可選）
-5. 規則式分析
-6. Telegram Bot API
-7. GitHub state.json
+GitHub Secrets：YOUTUBE_API_KEY、TELEGRAM_BOT_TOKEN、TELEGRAM_CHAT_ID、GEMINI_API_KEY、GEMINI_MODEL（可選）。
 
-
-## 流程
-
-YouTube
-→ 新影片偵測
-→ 字幕
-→ Gemini
-→ AI 不可用時規則式摘要
-→ 重要度評分
-→ Telegram
-
-
-## GitHub Secrets
-
-必要：
-
-YOUTUBE_API_KEY
-
-TELEGRAM_BOT_TOKEN
-
-TELEGRAM_CHAT_ID
-
-
-可選：
-
-GEMINI_API_KEY
-
-GEMINI_MODEL
-
-
-## 頻道設定
-
-config/channels.yaml
-
-
-例如：
-
-channels:
-
-  - name: 我的財經頻道
-
-    channel_id: UCxxxxxxxxxxxxxxxxxxxx
-
-    enabled: true
-
-    keywords:
-      - 台股
-      - 台積電
-      - AI
-      - 半導體
-
-    min_score: 50
-
-
-## 第一次執行
-
-預設：
-
-mark_existing_as_processed: true
-
-
-第一次只建立已處理影片清單。
-
-
-## 完全免費模式
-
-如果沒有 GEMINI_API_KEY：
-
-系統仍然可以：
-
-- 找新影片
-- 取得字幕
-- 擷取關鍵句
-- 擷取數字
-- 擷取百分比
-- 關鍵字分析
-- 分類
-- 重要度評分
-- Telegram 推播
-
-
-## Gemini 模式
-
-如果設定 GEMINI_API_KEY：
-
-優先使用 Gemini。
-
-
-如果 Gemini 失敗：
-
-自動回到規則式分析。
-
-
-## GitHub Actions
-
-每 30 分鐘執行一次。
-
-
-## 後續功能
-
-- 每日總結
-- 多頻道交叉分析
-- 股票代號辨識
-- 台股/美股/AI/半導體分類
-- Telegram Topic
-- SQLite
-- Web 管理頁面
+測試期間 config/settings.yaml 的 test_mode=true；確認正常後改成 false。
