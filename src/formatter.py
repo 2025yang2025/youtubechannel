@@ -3,198 +3,51 @@ from __future__ import annotations
 import re
 
 
-def _clean(value: str) -> str:
-
-    if not value:
-        return ""
-
-    value = re.sub(
-        r"https?://\S+",
-        "",
-        value,
-    )
-
-    value = re.sub(
-        r"#\S+",
-        "",
-        value,
-    )
-
-    value = re.sub(
-        r"\s+",
-        " ",
-        value,
-    )
-
-    return value.strip()
+def _clean_point(text: str) -> str:
+    text = re.sub(r"\s+", " ", str(text or "")).strip(" •-\t\n")
+    text = re.sub(r"https?://\S+|www\.\S+", "", text, flags=re.I).strip()
+    return text
 
 
-def _remove_duplicate_points(
-    points: list[str],
-) -> list[str]:
+def format_message(video: dict, analysis: dict) -> str:
+    channel = str(video.get("channel_name", "未知頻道")).strip()
+    points: list[str] = []
 
-    result = []
-    seen = set()
-
-    for point in points:
-
-        point = _clean(point)
-
-        if not point:
+    for raw in analysis.get("key_points", []):
+        point = _clean_point(raw)
+        if len(point) < 18:
             continue
+        if point not in points:
+            points.append(point)
+        if len(points) >= 4:
+            break
 
-        key = re.sub(
-            r"\s+",
-            "",
-            point,
-        )
-
-        if key in seen:
-            continue
-
-        seen.add(key)
-        result.append(point)
-
-    return result
-
-
-def format_message(
-    video: dict,
-    analysis: dict,
-    channel=None,
-) -> str:
-
-    # -----------------------------------------------------
-    # 頻道名稱
-    # -----------------------------------------------------
-
-    channel_name = (
-        video.get("channel_name")
-        or video.get("channel")
-        or (
-            getattr(channel, "name", "")
-            if channel
-            else ""
-        )
-        or "YouTube"
-    )
-
-    # -----------------------------------------------------
-    # 標題
-    # -----------------------------------------------------
-
-    title = _clean(
-        video.get(
-            "title",
-            "",
-        )
-    )
-
-    # -----------------------------------------------------
-    # 重點
-    # -----------------------------------------------------
-
-    points = analysis.get(
-        "key_points",
-        [],
-    )
-
-    if not isinstance(points, list):
-        points = []
-
-    points = _remove_duplicate_points(
-        points
-    )
-
-    # -----------------------------------------------------
-    # 個股
-    # -----------------------------------------------------
-
-    assets = analysis.get(
-        "mentioned_assets",
-        [],
-    )
-
-    if not isinstance(assets, list):
-        assets = []
-
-    asset_result = []
-
-    seen_assets = set()
-
-    for asset in assets:
-
-        asset = _clean(
-            str(asset)
-        )
-
-        if not asset:
-            continue
-
-        if asset in seen_assets:
-            continue
-
-        seen_assets.add(asset)
-        asset_result.append(asset)
-
-    # -----------------------------------------------------
-    # 組合 Telegram
-    # -----------------------------------------------------
-
-    lines = []
-
-    lines.append(
-        f"📺 {channel_name}"
-    )
-
-    lines.append("")
-
-    if title:
-
-        lines.append(
-            f"🎬 {title}"
-        )
-
-        lines.append("")
-
-    # -----------------------------------------------------
-    # 影片重點
-    # -----------------------------------------------------
-
-    lines.append(
-        "🔎 影片重點"
-    )
-
+    lines = [f"📺 {channel}", "", "🎯 影片重點"]
     if points:
-
-        for point in points[:5]:
-
-            lines.append(
-                f"• {point}"
-            )
-
+        lines.extend(f"• {p}" for p in points)
     else:
+        lines.append("• 此影片目前沒有足夠文字內容可整理。")
 
-        lines.append(
-            "• 目前無法取得足夠影片內容。"
-        )
+    assets: list[str] = []
+    seen: set[str] = set()
+    for item in analysis.get("mentioned_assets", []):
+        if isinstance(item, str):
+            name = item.strip()
+            code = ""
+        else:
+            name = str(item.get("name", "")).strip()
+            code = str(item.get("code", "")).strip()
 
-    # -----------------------------------------------------
-    # 個股
-    # -----------------------------------------------------
+        if code and not re.fullmatch(r"\d{4}", code):
+            code = ""
+        label = f"{code} {name}".strip() if code else name
+        if label and label not in seen:
+            seen.add(label)
+            assets.append(label)
 
-    if asset_result:
+    if assets:
+        lines += ["", "🏷 提及個股 / 公司"]
+        lines.extend(f"• {x}" for x in assets[:12])
 
-        lines.append("")
-
-        lines.append(
-            "📈 提及個股"
-        )
-
-        for asset in asset_result[:15]:
-
-            lines.append(
-                f"• {asset}"
-            )
-
+    lines += ["", "⚠️ 以上為影片內容整理，不代表投資建議。"]
     return "\n".join(lines)
