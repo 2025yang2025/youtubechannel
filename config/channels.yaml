@@ -1,59 +1,25 @@
 channels:
-
   - name: "關我什麼事"
-    channel_id: ""
     handle: "@關我什麼事"
+    channel_id: ""
     enabled: true
-    keywords:
-      - "台股"
-      - "股票"
-      - "個股"
-      - "台積電"
-      - "聯發科"
-      - "AI"
-      - "半導體"
-    min_score: 40
-
-
+    min_score: 0
+    keywords: ["台股", "股票", "投資", "產業", "台積電", "AI"]
   - name: "鈔錢部署"
+    handle: "@鈔前部署"
     channel_id: ""
-    handle: "@鈔錢部署"
     enabled: true
-    keywords:
-      - "台股"
-      - "股票"
-      - "個股"
-      - "投資"
-      - "選股"
-      - "台積電"
-      - "AI"
-    min_score: 40
-
-
+    min_score: 0
+    keywords: ["台股", "股票", "投資", "產業", "台積電", "AI"]
   - name: "Catch大錢潮"
-    channel_id: ""
     handle: "@Catch大錢潮"
-    enabled: true
-    keywords:
-      - "台股"
-      - "股票"
-      - "個股"
-      - "投資"
-      - "AI"
-      - "半導體"
-    min_score: 40
-
-
-  - name: "MoneyDJ理財網"
     channel_id: ""
-    handle: "@MoneydjTV"
     enabled: true
-    keywords:
-      - "台股"
-      - "股票"
-      - "個股"
-      - "產業"
-      - "AI"
-      - "半導體"
-      - "科技"
-    min_score: 40
+    min_score: 0
+    keywords: ["台股", "股票", "投資", "產業", "台積電", "AI"]
+  - name: "MoneyDJ理財網"
+    handle: "@MoneydjTV"
+    channel_id: ""
+    enabled: true
+    min_score: 0
+    keywords: ["台股", "股票", "投資", "產業", "台積電", "AI"]

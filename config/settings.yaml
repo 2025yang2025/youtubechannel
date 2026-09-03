@@ -1,48 +1,22 @@
-app:
-  timezone: Asia/Taipei
-
-monitor:
-
-  # 每個頻道每次最多檢查幾部影片
-  max_videos_per_channel: 1
-
-  test_mode: true
-  
-  bootstrap:
-
-    # 第一次執行：
-    # true = 不推播舊影片，只建立已處理清單
-    # false = 允許分析目前抓到的影片
-    mark_existing_as_processed: true
-
-
-transcript:
-
-  languages:
-    - zh-TW
-    - zh-Hant
-    - zh
-    - en
-
-  # 沒字幕時使用 YouTube description
-  fallback_to_description: true
-
-
 free_mode:
-
-  # 有 Gemini API 時使用 Gemini
   use_gemini_if_available: true
-
-  # Gemini 失敗後回到免費規則分析
   fallback_to_rules: true
-
-
 ai:
-
-  # 沒有設定 GEMINI_MODEL 時使用
-  default_gemini_model: gemini-2.0-flash
-
-
+  # 穩定、成本效益較佳；可在 GitHub Variables/Secrets 用 GEMINI_MODEL 覆蓋
+  default_gemini_model: "gemini-2.5-flash"
+  fallback_models:
+    - "gemini-2.5-flash-lite"
+    - "gemini-3.7-flash"
+  max_transcript_chars: 45000
+  max_output_tokens: 900
+monitor:
+  max_videos_per_channel: 1
+  test_mode: true
+  bootstrap:
+    mark_existing_as_processed: false
+transcript:
+  languages: ["zh-TW", "zh-Hant", "zh", "en"]
+  fallback_to_description: true
+  minimum_useful_chars: 80
 telegram:
-
   max_message_chars: 3900
