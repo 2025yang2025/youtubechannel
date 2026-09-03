@@ -17,13 +17,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(
 
 def _models(settings: dict) -> list[str]:
     ai = settings.get("ai", {}) or {}
-    preferred = get_env("GEMINI_MODEL", ai.get("default_gemini_model", "gemini-2.5-flash"))
+    preferred = get_env("GEMINI_MODEL", ai.get("default_gemini_model", "gemini-3.6-flash"))
     fallbacks = [str(x).strip() for x in ai.get("fallback_models", []) if str(x).strip()]
     result: list[str] = []
     for model in [preferred, *fallbacks]:
         if model and model not in result:
             result.append(model)
-    return result or ["gemini-2.5-flash"]
+    return result or ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.7-flash"]
 
 
 def _try_gemini(api_key: str, models: list[str], video: dict, text: str, max_chars: int, max_tokens: int):
