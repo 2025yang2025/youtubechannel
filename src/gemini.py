@@ -169,6 +169,8 @@ def analyze_gemini(
     text = (text or "").strip()
     client = genai.Client(api_key=api_key)
 
+    auxiliary_context = (description[:12000] + "\n" + text[:max_chars])[:max_chars]
+
     prompt = f"""
 頻道：{video.get('channel_name', '')}
 
@@ -186,7 +188,7 @@ def analyze_gemini(
 
 【Description／字幕輔助資料】
 這些資料可能不完整或只有宣傳文案，只能拿來輔助核對，不能把它當成影片重點：
-{(description[:12000] + '\n' + text[:max_chars])[:max_chars]}
+{auxiliary_context}
 
 輸出最多 4 個重點。
 每個重點必須是完整中文句子，具體說明「發生什麼事 / 為什麼被強調 / 有什麼數據或觀點」。
