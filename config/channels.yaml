@@ -4,22 +4,54 @@ channels:
     channel_id: "UCMpuxj_U02VaHfaPD5Jjx_Q"
     enabled: true
     min_score: 0
-    keywords: ["台股", "股票", "投資", "ETF", "產業", "台積電", "AI"]
+    keywords: ["台股", "股票", "投資", "ETF", "產業", "台積電", "AI", "公司"]
+
   - name: "鈔錢部署"
     handle: "@鈔前部署"
     channel_id: "UCYeChLc27pFzYNCxTorOrLA"
     enabled: true
     min_score: 0
-    keywords: ["台股", "股票", "投資", "ETF", "產業", "個股", "AI"]
+    keywords: ["台股", "股票", "投資", "ETF", "產業", "個股", "AI", "公司"]
+
   - name: "Catch大錢潮"
     handle: "@Catch大錢潮"
     channel_id: "UCwIdAI4fCV4lisP3TZzOGuw"
     enabled: true
     min_score: 0
-    keywords: ["台股", "股票", "投資", "總經", "產業", "關稅", "美股"]
+    keywords: ["台股", "股票", "投資", "總經", "產業", "關稅", "美股", "公司"]
+
   - name: "MoneyDJ理財網"
     handle: "@MoneydjTV"
     channel_id: "UC8qLLXh5cuY_jtvOHsSYmTA"
     enabled: true
     min_score: 0
-    keywords: ["台股", "股票", "投資", "產業", "公司", "科技"]
+    keywords: ["台股", "股票", "投資", "產業", "公司", "科技", "半導體"]
+
+  - name: "總編當莊"
+    handle: "@berich888"
+    channel_id: "UClCO7CMbARS3oeUUVAMzN8g"
+    enabled: true
+    min_score: 0
+    keywords: ["台股", "股票", "投資", "產業", "公司", "台積電", "AI", "半導體", "基本面"]
+
+  - name: "老王愛說笑"
+    handle: "@oldwangstock"
+    channel_id: "UCvnLmiWt_zIVIh0zUm_j4Hw"
+    enabled: true
+    min_score: 0
+    keywords: ["台股", "股票", "投資", "總經", "美股", "籌碼", "法人", "產業", "公司"]
+
+  - name: "財經希引力"
+    handle: "@財經希引力"
+    channel_id: "UCBES_XBcxRVyMUA9Ue9sy1g"
+    enabled: true
+    min_score: 0
+    keywords: ["台股", "股票", "投資", "財經", "總經", "產業", "美股", "科技", "公司"]
+
+  - name: "林睿閎分析師"
+    handle: "@-john4000"
+    channel_id: "UCXB8cCqwOHP3BmyhYLAUs0g"
+    enabled: true
+    min_score: 0
+    keywords: ["台股", "股票", "投資", "財報", "產業", "台積電", "法人", "外資", "公司"]
+
