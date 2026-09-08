@@ -18,16 +18,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(
 def _models(settings: dict) -> list[str]:
     ai = settings.get("ai", {}) or {}
     preferred = get_env("GEMINI_MODEL", ai.get("default_gemini_model", "gemini-3.7-flash"))
-    # Ignore old model names left in an existing GitHub Secret.
     retired = {"gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite"}
     if preferred in retired:
         preferred = str(ai.get("default_gemini_model", "gemini-3.7-flash"))
     fallbacks = [str(x).strip() for x in ai.get("fallback_models", []) if str(x).strip()]
     result: list[str] = []
-    for model in [preferred, *fallbacks]:
-        if model and model not in result:
+    for model in [preferred, *fallbacks, "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]:
+        if model and model not in result and model not in retired:
             result.append(model)
-    return result or ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"]
+    return result
 
 
 def _try_gemini(api_key: str, models: list[str], video: dict, text: str, max_chars: int, max_tokens: int, use_youtube_url: bool):
@@ -77,28 +76,28 @@ def main() -> int:
         logging.info("Checking: %s", channel.name)
         try:
             videos = get_latest_videos(youtube_key, channel, max_videos)
-        except Exception as exc:
-            logging.exception("YouTube API failed: %s", exc)
+        except Exception:
+            logging.exception("YouTube API failed: %s", channel.name)
             continue
 
         for video in videos:
-            video_id = video.get("video_id", "")
+            video_id = str(video.get("video_id", "")).strip()
             if not video_id or (not test_mode and is_processed(state, video_id)):
                 continue
 
             logging.info("Processing video: %s", video.get("title", ""))
-            text, source = get_transcript(video_id, languages)
+            transcript, source = get_transcript(video_id, languages)
             description = str(video.get("description", "") or "").strip()
 
-            # YouTube Transcript API 在 GitHub Actions 常被 YouTube 擋住。
-            # 不再因為沒有字幕而直接跳過；如果啟用 Gemini YouTube URL，
-            # 讓 Gemini 直接讀取公開影片的音訊/畫面內容。
+            # 字幕可用時提供給 Gemini；字幕不可用時仍會直接讓 Gemini 讀取公開 YouTube 影片。
+            text = transcript
             if not usable_text(text, minimum) and fallback_description and usable_text(description, minimum):
-                text, source = description, "description"
-                logging.info("字幕不可用，改用影片 Description 作為文字輔助: %s", video_id)
-
-            if not usable_text(text, minimum):
-                logging.warning("字幕/Description 不足，將嘗試 Gemini 直接分析 YouTube 影片：%s", video_id)
+                text = description
+                source = "description"
+                logging.info("字幕不可用，Description 作為輔助資料: %s", video_id)
+            elif not usable_text(text, minimum):
+                source = "youtube_video"
+                logging.info("字幕/Description 不足，改由 Gemini 直接讀取 YouTube 影片: %s", video_id)
 
             analysis = None
             analysis_source = ""
@@ -118,6 +117,7 @@ def main() -> int:
                 except Exception:
                     logging.exception("Gemini 分析失敗，嘗試回退規則模式: %s", video_id)
 
+            # 只有真的有文字內容時才允許規則模式；標題絕不拿來湊重點。
             if analysis is None and use_rules and usable_text(text, minimum):
                 try:
                     analysis = analyze_rules(
@@ -130,12 +130,9 @@ def main() -> int:
                     logging.info("Rules analysis complete: %s", video_id)
                 except Exception as exc:
                     logging.warning("Rules 也無法整理 %s：%s", video_id, exc)
-                    if not test_mode:
-                        mark_processed(state, video_id, "no_substantive_content")
-                        save_state(state)
-                    continue
 
-            if not analysis:
+            if not analysis or not analysis.get("key_points"):
+                logging.warning("沒有足夠的實質影片內容，跳過 Telegram：%s", video_id)
                 continue
 
             message = format_message(video, analysis)
