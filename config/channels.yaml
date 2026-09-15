@@ -55,3 +55,9 @@ channels:
     min_score: 0
     keywords: ["台股", "股票", "投資", "財報", "產業", "台積電", "法人", "外資", "公司"]
 
+  - name: "陳威良 股市全威 (考股學家)"
+    handle: "@ccstock888"
+    channel_id: "UCOJb2Ygitq3bMAigMLfYKRQ"
+    enabled: true
+    min_score: 0
+    keywords: ["台股", "股票", "投資", "總經", "產業", "籌碼", "法人", "美股", "公司", "ETF"]

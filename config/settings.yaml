@@ -12,7 +12,7 @@ ai:
 
 monitor:
   max_videos_per_channel: 1
-  test_mode: true
+  test_mode: false
   bootstrap:
     mark_existing_as_processed: false
 
