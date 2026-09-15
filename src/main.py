@@ -16,31 +16,35 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(
 
 
 def _models(settings: dict) -> list[str]:
+    """Use one Gemini model per video to minimize daily quota usage.
+    A 429/failed call immediately falls back to rules mode.
+    """
     ai = settings.get("ai", {}) or {}
     preferred = get_env("GEMINI_MODEL", ai.get("default_gemini_model", "gemini-3.7-flash"))
     retired = {"gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite"}
     if preferred in retired:
         preferred = str(ai.get("default_gemini_model", "gemini-3.7-flash"))
-    fallbacks = [str(x).strip() for x in ai.get("fallback_models", []) if str(x).strip()]
-    result: list[str] = []
-    for model in [preferred, *fallbacks, "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]:
-        if model and model not in result and model not in retired:
-            result.append(model)
-    return result
+    if preferred in retired:
+        preferred = "gemini-3.7-flash"
+    return [preferred]
 
 
 def _try_gemini(api_key: str, models: list[str], video: dict, text: str, max_chars: int, max_tokens: int, use_youtube_url: bool):
-    last_error: Exception | None = None
-    for model in models:
-        try:
-            logging.info("Gemini model: %s", model)
-            return analyze_gemini(api_key, model, video, text, max_chars, max_tokens, use_youtube_url), model
-        except Exception as exc:
-            last_error = exc
-            logging.warning("Gemini model failed [%s]: %s", model, str(exc).splitlines()[0][:250])
-    if last_error:
-        raise last_error
-    raise RuntimeError("沒有可用 Gemini model")
+    if not models:
+        raise RuntimeError("沒有啟用 Gemini model")
+    model = models[0]
+    logging.info("Gemini model: %s", model)
+    try:
+        return analyze_gemini(
+            api_key, model, video, text, max_chars, max_tokens, use_youtube_url
+        ), model
+    except Exception as exc:
+        msg = str(exc).splitlines()[0][:300]
+        if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower():
+            logging.warning("Gemini 額度/速率限制 [%s]，本支影片直接回退 Rules，不再嘗試其他模型。", model)
+        else:
+            logging.warning("Gemini 失敗 [%s]，直接回退 Rules：%s", model, msg)
+        raise
 
 
 def main() -> int:
