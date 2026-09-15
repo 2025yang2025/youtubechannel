@@ -2,7 +2,7 @@ name: YouTube to Telegram
 on:
   workflow_dispatch:
   schedule:
-    # 每天台灣時間 20:00（UTC 12:00）執行一次
+    # 每天台灣時間 20:00（UTC 12:00）執行一次；每日只執行一次
     - cron: "0 12 * * *"
 jobs:
   run:
