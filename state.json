@@ -1,4 +1,9 @@
 {
-  "initialized": false,
-  "processed": {}
+  "initialized": true,
+  "processed": {
+    "_dpuRGj66oc": {
+      "status": "sent",
+      "score": null
+    }
+  }
 }
